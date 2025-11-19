@@ -5,7 +5,3 @@ export default {
   },
 };
 
-git init 
-git add .
-git commit -m "Deployment commit"
-git push origin main
