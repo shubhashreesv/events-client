@@ -13,8 +13,10 @@ import {
   Save,
   X,
   Upload,
-  Images // Replaced Gallery with Images
+  Link,
+  Images
 } from 'lucide-react';
+import slugify from 'slugify';
 
 const ManageClubsPage = () => {
   const { user } = useAuth();
@@ -25,12 +27,16 @@ const ManageClubsPage = () => {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
+    slug: '',
     description: '',
     logoUrl: '',
     gallery: [],
-    contactInfo: []
+    contactInfo: [],
+    ownerName: '',
+    ownerEmail: ''
   });
   const [newContact, setNewContact] = useState({
     name: '',
@@ -39,6 +45,7 @@ const ManageClubsPage = () => {
     phone: '',
     position: ''
   });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadClubs();
@@ -48,101 +55,141 @@ const ManageClubsPage = () => {
     }
   }, [id]);
 
+  useEffect(() => {
+  if (formData.name && !isEditing && !slugManuallyEdited) {
+    const generatedSlug = slugify(formData.name, {
+      lower: true,
+      strict: true,
+      remove: /[*+~.()'"!:@]/g
+    });
+    setFormData(prev => ({
+      ...prev,
+      slug: generatedSlug
+    }));
+  }
+}, [formData.name, isEditing, slugManuallyEdited]);
+
+
+
+  const API_BASE = 'http://localhost:5000/api';
+
+
   const loadClubs = async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        setClubs([
-          {
-            _id: '1',
-            name: 'Tech Club',
-            description: 'Technology and innovation club focused on coding, AI, and robotics. We organize hackathons, workshops, and tech talks.',
-            logoUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200',
-            gallery: [
-              'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400',
-              'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400'
-            ],
-            contactInfo: [
-              {
-                name: 'Dr. Sarah Johnson',
-                role: 'advisor',
-                email: 'sarah.johnson@college.edu',
-                phone: '+1 (555) 123-4567',
-                position: 'Faculty Advisor'
-              }
-            ],
-            owner: { name: 'John Doe', email: 'john@college.edu' },
-            createdAt: new Date('2024-01-15')
-          },
-          {
-            _id: '2',
-            name: 'Arts Society',
-            description: 'Creative arts and performance group. We host exhibitions, performances, and creative workshops.',
-            logoUrl: 'https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=200',
-            gallery: [],
-            contactInfo: [],
-            owner: { name: 'Jane Smith', email: 'jane@college.edu' },
-            createdAt: new Date('2024-01-20')
-          }
-        ]);
-        setLoading(false);
-      }, 1000);
+      const response = await fetch(`${API_BASE}/admin/clubs`, {
+        headers: {
+          'Authorization': `Bearer ${user.token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setClubs(data.clubs);
+      } else {
+        console.error('Failed to load clubs');
+        // Fallback to empty array
+        setClubs([]);
+      }
     } catch (error) {
       console.error('Error loading clubs:', error);
+      setClubs([]);
+    } finally {
       setLoading(false);
     }
   };
 
   const loadClubForEdit = async (clubId) => {
-    const club = clubs.find(c => c._id === clubId);
-    if (club) {
-      setFormData({
-        name: club.name,
-        description: club.description,
-        logoUrl: club.logoUrl,
-        gallery: club.gallery,
-        contactInfo: club.contactInfo
+    try {
+      const response = await fetch(`${API_BASE}/clubs/${clubId}`, {
+        headers: {
+          'Authorization': `Bearer ${user.token}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
+      if (response.ok) {
+        const club = await response.json();
+        setFormData({
+          name: club.name || '',
+          description: club.description || '',
+          logoUrl: club.logoUrl || '',
+          gallery: club.gallery || [],
+          contactInfo: club.contactInfo || []
+        });
+      } else {
+        console.error('Failed to load club for editing');
+      }
+    } catch (error) {
+      console.error('Error loading club for edit:', error);
     }
   };
-
-  const filteredClubs = clubs.filter(club =>
-    club.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    club.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
+  e.preventDefault();
+  setSaving(true);
+  
+  try {
+    const url = isEditing ? `${API_BASE}/clubs/${id}` : `${API_BASE}/clubs`;
+    const method = isEditing ? 'PUT' : 'POST';
+
+    const response = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`
+      },
+      body: JSON.stringify(formData)
+    });
+
+    if (response.ok) {
+      const savedClub = await response.json();
+      console.log('Club saved successfully:', savedClub);
+      await loadClubs(); // Reload the clubs list
+      resetForm();
+      
       if (isEditing) {
-        // Update club
-        setClubs(clubs.map(club =>
-          club._id === id
-            ? { ...club, ...formData }
-            : club
-        ));
-        navigate('/admin/manage-clubs');
+        navigate('/admin/clubs');
       } else {
-        // Add new club
-        const newClub = {
-          ...formData,
-          _id: Date.now().toString(),
-          owner: { name: 'Admin', email: user.email },
-          createdAt: new Date()
-        };
-        setClubs([...clubs, newClub]);
+        // For new clubs, show success message and stay on the page
+        alert('Club created successfully!');
         setIsAdding(false);
       }
-      resetForm();
-    } catch (error) {
-      console.error('Error saving club:', error);
+    } else {
+      const errorData = await response.json();
+      alert(errorData.message || 'Failed to save club');
     }
-  };
+  } catch (error) {
+    console.error('Error saving club:', error);
+    alert('Error saving club. Please try again.');
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleDelete = async (clubId) => {
     if (window.confirm('Are you sure you want to delete this club? This action cannot be undone.')) {
-      setClubs(clubs.filter(club => club._id !== clubId));
+      try {
+        const response = await fetch(`${API_BASE}/admin/clubs/${clubId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${user.token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          await loadClubs(); // Reload the clubs list
+          alert('Club deleted successfully');
+        } else {
+          const errorData = await response.json();
+          alert(errorData.message || 'Failed to delete club');
+        }
+      } catch (error) {
+        console.error('Error deleting club:', error);
+        alert('Error deleting club. Please try again.');
+      }
     }
   };
 
@@ -153,6 +200,8 @@ const ManageClubsPage = () => {
         contactInfo: [...formData.contactInfo, { ...newContact }]
       });
       setNewContact({ name: '', role: '', email: '', phone: '', position: '' });
+    } else {
+      alert('Please fill in name, email, and role for the contact');
     }
   };
 
@@ -160,6 +209,22 @@ const ManageClubsPage = () => {
     const updatedContacts = [...formData.contactInfo];
     updatedContacts.splice(index, 1);
     setFormData({ ...formData, contactInfo: updatedContacts });
+  };
+
+  const addGalleryImage = () => {
+    const imageUrl = prompt('Enter image URL:');
+    if (imageUrl) {
+      setFormData({
+        ...formData,
+        gallery: [...formData.gallery, imageUrl]
+      });
+    }
+  };
+
+  const removeGalleryImage = (index) => {
+    const updatedGallery = [...formData.gallery];
+    updatedGallery.splice(index, 1);
+    setFormData({ ...formData, gallery: updatedGallery });
   };
 
   const resetForm = () => {
@@ -170,9 +235,16 @@ const ManageClubsPage = () => {
       gallery: [],
       contactInfo: []
     });
+    setNewContact({ name: '', role: '', email: '', phone: '', position: '' });
     setIsEditing(false);
     setIsAdding(false);
+    setSlugManuallyEdited(false);
   };
+
+  const filteredClubs = clubs.filter(club =>
+    club.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    club.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -212,28 +284,53 @@ const ManageClubsPage = () => {
 
         {/* Add/Edit Form */}
         {(isAdding || isEditing) && (
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 mb-6">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 space-y-6">
-                  {/* Basic Info */}
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 mb-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              {/* Basic Info */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+                <div className="space-y-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Club Name *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Enter club name"
-                        />
-                      </div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Club Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter club name"
+                    />
+                  </div>
 
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      URL Slug *
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Link className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={formData.slug}
+                        onChange={(e) => {
+                          setSlugManuallyEdited(true);  
+                          setFormData({ ...formData, slug: e.target.value });
+                        }}
+
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="club-url-slug"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      This will be used in the URL: yoursite.com/clubs/{formData.slug || 'club-name'}
+                    </p>
+                  </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Description *
@@ -273,7 +370,7 @@ const ManageClubsPage = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <input
                             type="text"
-                            placeholder="Name"
+                            placeholder="Name *"
                             value={newContact.name}
                             onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
                             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -283,14 +380,16 @@ const ManageClubsPage = () => {
                             onChange={(e) => setNewContact({ ...newContact, role: e.target.value })}
                             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                           >
-                            <option value="">Select Role</option>
+                            <option value="">Select Role *</option>
                             <option value="advisor">Advisor</option>
                             <option value="coordinator">Coordinator</option>
                             <option value="president">President</option>
+                            <option value="faculty">Faculty</option>
+                            <option value="staff">Staff</option>
                           </select>
                           <input
                             type="email"
-                            placeholder="Email"
+                            placeholder="Email *"
                             value={newContact.email}
                             onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
                             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -318,6 +417,35 @@ const ManageClubsPage = () => {
                           Add Contact
                         </button>
                       </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Owner Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.ownerName || ''}
+                          onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          placeholder="Owner full name"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Owner Email *
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={formData.ownerEmail || ''}
+                          onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          placeholder="Owner email address"
+                        />
+                      </div>
+
 
                       {/* Contacts List */}
                       {formData.contactInfo.map((contact, index) => (
@@ -354,10 +482,28 @@ const ManageClubsPage = () => {
                       ))}
                     </div>
                   </div>
+
+                  {/* Gallery Management */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Gallery Images</h3>
+                    <div className="space-y-4">
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <button
+                          type="button"
+                          onClick={addGalleryImage}
+                          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Add Gallery Image</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Logo Preview */}
+                {/* Preview Section */}
                 <div className="space-y-6">
+                  {/* Logo Preview */}
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Logo Preview</h3>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
@@ -383,12 +529,20 @@ const ManageClubsPage = () => {
                     </h3>
                     <div className="grid grid-cols-2 gap-2">
                       {formData.gallery.map((url, index) => (
-                        <img
-                          key={index}
-                          src={url}
-                          alt={`Gallery ${index + 1}`}
-                          className="w-full h-20 object-cover rounded-lg"
-                        />
+                        <div key={index} className="relative group">
+                          <img
+                            src={url}
+                            alt={`Gallery ${index + 1}`}
+                            className="w-full h-20 object-cover rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeGalleryImage(index)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       ))}
                       {formData.gallery.length === 0 && (
                         <div className="col-span-2 border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
@@ -405,14 +559,25 @@ const ManageClubsPage = () => {
               <div className="flex space-x-3 pt-6 border-t border-gray-200">
                 <button
                   type="submit"
-                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                  disabled={saving}
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2 rounded-lg font-medium transition-colors"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>{isEditing ? 'Update' : 'Create'} Club</span>
+                  {saving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>{isEditing ? 'Update' : 'Create'} Club</span>
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={resetForm}
+                  disabled={saving}
                   className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-medium transition-colors"
                 >
                   <X className="w-4 h-4" />
@@ -443,32 +608,39 @@ const ManageClubsPage = () => {
             {/* Clubs Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredClubs.map((club) => (
-                <div key={club._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div key={club._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center space-x-3">
                         <img
-                          src={club.logoUrl}
+                          src={club.logoUrl || '/default-club-logo.png'}
                           alt={club.name}
-                          className="w-12 h-12 rounded-lg object-cover"
+                          className="w-12 h-12 rounded-lg object-cover bg-gray-200"
+                          onError={(e) => {
+                            e.target.src = '/default-club-logo.png';
+                          }}
                         />
                         <div>
                           <h3 className="font-semibold text-gray-900">{club.name}</h3>
-                          <p className="text-sm text-gray-500">by {club.owner.name}</p>
+                          <p className="text-sm text-gray-500">
+                            by {club.owner?.name || 'Unknown'}
+                          </p>
                         </div>
                       </div>
                     </div>
 
-                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">{club.description}</p>
+                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                      {club.description || 'No description provided'}
+                    </p>
 
                     <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
                       <div className="flex items-center">
                         <Users className="w-4 h-4 mr-1" />
-                        {club.contactInfo.length} contacts
+                        {club.contactInfo?.length || 0} contacts
                       </div>
                       <div className="flex items-center">
                         <Images className="w-4 h-4 mr-1" />
-                        {club.gallery.length} photos
+                        {club.gallery?.length || 0} photos
                       </div>
                     </div>
 
@@ -494,10 +666,20 @@ const ManageClubsPage = () => {
             {filteredClubs.length === 0 && (
               <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-200">
                 <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500 text-lg">No clubs found</p>
+                <p className="text-gray-500 text-lg">
+                  {searchTerm ? 'No clubs found matching your search' : 'No clubs available'}
+                </p>
                 <p className="text-gray-400 mt-1">
                   {searchTerm ? 'Try adjusting your search terms' : 'Get started by creating your first club'}
                 </p>
+                {!searchTerm && (
+                  <button
+                    onClick={() => setIsAdding(true)}
+                    className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                  >
+                    Create First Club
+                  </button>
+                )}
               </div>
             )}
           </>

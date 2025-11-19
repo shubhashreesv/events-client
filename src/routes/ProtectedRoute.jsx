@@ -1,12 +1,10 @@
-// src/routes/ProtectedRoute.jsx
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import RestrictedAccess from '../components/common/RestrictedAccess';
 
-function ProtectedRoute({ children, requiredRole, allowedRoles }) {
-  const { user, isAuthenticated, loading } = useAuth();
+const ProtectedRoute = ({ children, allowedRoles = [] }) => {
+  const { user, loading, getUserRole } = useAuth();
 
-  // Show loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -15,20 +13,20 @@ function ProtectedRoute({ children, requiredRole, allowedRoles }) {
     );
   }
 
-  // Check authentication
-  if (!isAuthenticated || !user) {
-    return <RestrictedAccess />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
-  // Check role access
-  const roles = allowedRoles || (requiredRole ? [requiredRole] : []);
-  const hasAccess = roles.length === 0 || roles.includes(user.role);
-
-  if (!hasAccess) {
-    return <RestrictedAccess />;
+  // Check if user has required role
+  if (allowedRoles.length > 0) {
+    const userRole = getUserRole();
+    
+    if (!allowedRoles.includes(userRole)) {
+      return <Navigate to="/unauthorized" replace />;
+    }
   }
 
   return children;
-}
+};
 
 export default ProtectedRoute;

@@ -13,136 +13,65 @@ import {
   Filter,
   Eye,
   Edit,
-  ExternalLink
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
+import { useClubEvents, useMyClub, useUpcomingEvents } from "../../hooks/useEvents";
+import { eventAPI } from "../../services/eventService";
 
 const ClubCalendarPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState([]);
-  const [filteredEvents, setFilteredEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [view, setView] = useState('month');
   const [eventTypeFilter, setEventTypeFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState({ start: null, end: null });
 
-  // Dummy events data matching the schema
-  const dummyEvents = [
-    {
-      _id: "1",
-      title: "Tech Symposium 2024",
-      description: "Annual technology conference featuring the latest innovations in AI, Web Development, and Robotics",
-      date: new Date("2024-03-15T10:00:00.000Z"),
-      time: "10:00 AM - 5:00 PM",
-      venue: "Main Auditorium",
-      eventType: "super",
-      tags: ["technology", "ai", "conference", "innovation"],
-      posters: ["https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400"],
-      views: 245,
-      participantsCount: 156,
-      formLink: "https://forms.gle/example1",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-10T00:00:00.000Z")
-    },
-    {
-      _id: "2",
-      title: "Web Development Workshop",
-      description: "Hands-on workshop on modern web technologies including React, Node.js, and MongoDB",
-      date: new Date("2024-03-20T14:00:00.000Z"),
-      time: "2:00 PM - 6:00 PM",
-      venue: "Computer Lab 101",
-      eventType: "single",
-      tags: ["web development", "react", "workshop", "javascript"],
-      posters: ["https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400"],
-      views: 189,
-      participantsCount: 45,
-      formLink: "https://forms.gle/example2",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-15T00:00:00.000Z")
-    },
-    {
-      _id: "3",
-      title: "AI Hackathon 2024",
-      description: "24-hour AI and ML hackathon with industry mentors and exciting prizes",
-      date: new Date("2024-03-25T09:00:00.000Z"),
-      time: "9:00 AM (24 hours)",
-      venue: "Innovation Center",
-      eventType: "super",
-      tags: ["ai", "hackathon", "machine learning", "coding"],
-      posters: ["https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=400"],
-      views: 312,
-      participantsCount: 89,
-      formLink: "https://forms.gle/example3",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-20T00:00:00.000Z")
-    },
-    {
-      _id: "4",
-      title: "Robotics Workshop",
-      description: "Learn robotics fundamentals with hands-on experience building and programming robots",
-      date: new Date("2024-04-05T11:00:00.000Z"),
-      time: "11:00 AM - 4:00 PM",
-      venue: "Electronics Lab",
-      eventType: "single",
-      tags: ["robotics", "workshop", "hardware", "programming"],
-      posters: ["https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=400"],
-      views: 134,
-      participantsCount: 32,
-      formLink: "https://forms.gle/example4",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-02-01T00:00:00.000Z")
-    },
-    {
-      _id: "5",
-      title: "Tech Symposium - Opening Ceremony",
-      description: "Opening ceremony for the Tech Symposium with keynote speakers",
-      date: new Date("2024-03-15T09:00:00.000Z"),
-      time: "9:00 AM - 10:00 AM",
-      venue: "Main Auditorium",
-      eventType: "sub",
-      parentEvent: "1",
-      tags: ["opening", "keynote", "ceremony"],
-      posters: ["https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400"],
-      views: 178,
-      participantsCount: 156,
-      formLink: "https://forms.gle/example1",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-12T00:00:00.000Z")
+  // Fetch data using hooks
+  const { club, loading: clubLoading, error: clubError } = useMyClub();
+  const { events, loading: eventsLoading, error: eventsError, refetch: refetchEvents } = useClubEvents(
+    club?._id,
+    { 
+      eventType: eventTypeFilter !== 'all' ? eventTypeFilter : '',
+      sortBy: 'date',
+      sortOrder: 'asc'
     }
-  ];
+  );
+  const { events: upcomingEvents, loading: upcomingLoading } = useUpcomingEvents(5);
 
+  // Calculate date range for the current view
   useEffect(() => {
-    loadEvents();
-  }, []);
-
-  useEffect(() => {
-    filterEvents();
-  }, [events, eventTypeFilter]);
-
-  const loadEvents = async () => {
-    setLoading(true);
-    try {
-      // Simulate API call - in real app, this would be an API call to get club events
-      setTimeout(() => {
-        setEvents(dummyEvents);
-        setLoading(false);
-      }, 1000);
-    } catch (error) {
-      console.error('Error loading events:', error);
-      setLoading(false);
+    if (view === 'month') {
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      setDateRange({ start, end });
+    } else {
+      // Week view - get start of week (Sunday)
+      const start = new Date(currentDate);
+      start.setDate(currentDate.getDate() - currentDate.getDay());
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      setDateRange({ start, end });
     }
-  };
+  }, [currentDate, view]);
 
-  const filterEvents = () => {
-    let filtered = events;
-
-    if (eventTypeFilter !== 'all') {
-      filtered = filtered.filter(event => event.eventType === eventTypeFilter);
+  // Filter events based on current view and filters
+  const filteredEvents = events.filter(event => {
+    const eventDate = new Date(event.date);
+    
+    // Filter by event type
+    if (eventTypeFilter !== 'all' && event.eventType !== eventTypeFilter) {
+      return false;
     }
 
-    setFilteredEvents(filtered);
-  };
+    // Filter by date range for current view
+    if (dateRange.start && dateRange.end) {
+      return eventDate >= dateRange.start && eventDate <= dateRange.end;
+    }
+
+    return true;
+  });
 
   const navigateDate = (direction) => {
     const newDate = new Date(currentDate);
@@ -224,8 +153,15 @@ const ClubCalendarPage = () => {
     }
   };
 
-  const handleEventClick = (eventId) => {
-    navigate(`/club/events/${eventId}`);
+  const handleEventClick = async (eventId) => {
+    try {
+      // Increment views when event is clicked
+      await eventAPI.incrementEventViews(eventId);
+      navigate(`/club/events/${eventId}`);
+    } catch (error) {
+      console.error('Failed to increment views:', error);
+      navigate(`/club/events/${eventId}`);
+    }
   };
 
   const handleEditEvent = (eventId, e) => {
@@ -233,16 +169,20 @@ const ClubCalendarPage = () => {
     navigate(`/club/edit-event/${eventId}`);
   };
 
-  const days = getDaysInMonth(currentDate);
-  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const handleRefresh = () => {
+    refetchEvents();
+  };
 
-  const upcomingEvents = filteredEvents
-    .filter(event => new Date(event.date) >= new Date())
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, 5);
+  const handleCreateEvent = () => {
+    if (!club) {
+      alert('You need to create a club first before creating events');
+      return;
+    }
+    navigate('/club/create-event');
+  };
 
-  if (loading) {
+  // Loading and error states
+  if (clubLoading || eventsLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -252,6 +192,52 @@ const ClubCalendarPage = () => {
       </div>
     );
   }
+
+  if (clubError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            <p>{clubError}</p>
+          </div>
+          <button
+            onClick={() => navigate('/club/create-club')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold"
+          >
+            Create Your Club
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (eventsError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            <p>Error loading events: {eventsError}</p>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center mx-auto"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const days = getDaysInMonth(currentDate);
+  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const displayUpcomingEvents = upcomingEvents.length > 0 ? upcomingEvents : events
+    .filter(event => new Date(event.date) >= new Date())
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(0, 5);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -269,15 +255,26 @@ const ClubCalendarPage = () => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-4xl font-bold text-gray-900">Event Calendar</h1>
-            <p className="text-xl text-gray-600 mt-2">Track your event timeline and schedule</p>
+            <p className="text-xl text-gray-600 mt-2">
+              {club ? `${club.name} - Track your event timeline and schedule` : 'Loading...'}
+            </p>
           </div>
-          <button
-            onClick={() => navigate('/club/create-event')}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg"
-          >
-            <Plus className="w-5 h-5" />
-            <span>New Event</span>
-          </button>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={handleRefresh}
+              className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg"
+            >
+              <RefreshCw className="w-5 h-5" />
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={handleCreateEvent}
+              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg"
+            >
+              <Plus className="w-5 h-5" />
+              <span>New Event</span>
+            </button>
+          </div>
         </div>
 
         {/* Calendar Controls */}
@@ -512,10 +509,10 @@ const ClubCalendarPage = () => {
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Upcoming Events</h3>
               <div className="space-y-4">
-                {upcomingEvents.length === 0 ? (
+                {displayUpcomingEvents.length === 0 ? (
                   <p className="text-gray-500 text-center py-4">No upcoming events</p>
                 ) : (
-                  upcomingEvents.map(event => (
+                  displayUpcomingEvents.map(event => (
                     <div
                       key={event._id}
                       className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:shadow-md transition-shadow cursor-pointer"
@@ -552,6 +549,29 @@ const ClubCalendarPage = () => {
                 <div className="flex items-center">
                   <div className="w-4 h-4 bg-orange-500 rounded mr-3"></div>
                   <span className="text-sm text-gray-700">Sub Events</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Calendar Stats</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Total Events</span>
+                  <span className="font-semibold text-gray-900">{events.length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Upcoming Events</span>
+                  <span className="font-semibold text-green-600">
+                    {events.filter(e => new Date(e.date) >= new Date()).length}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">This Month</span>
+                  <span className="font-semibold text-blue-600">
+                    {filteredEvents.length}
+                  </span>
                 </div>
               </div>
             </div>

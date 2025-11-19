@@ -10,18 +10,19 @@ import {
   Phone,
   User,
   Users,
-  Edit3,
   Plus,
   X,
   Image as ImageIcon,
   Trash2
 } from 'lucide-react';
+import axios from 'axios';
 
 const ClubProfilePage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [club, setClub] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -37,45 +38,8 @@ const ClubProfilePage = () => {
     position: ''
   });
   const [showContactForm, setShowContactForm] = useState(false);
-
-  // Dummy club data
-  const dummyClub = {
-    _id: "65a1b2c3d4e5f67890123456",
-    name: "Computer Society of India - KEC",
-    description: "Leading computer science club organizing tech events, workshops, and hackathons for the college community. We aim to foster technical excellence and innovation among students.",
-    logoUrl: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200",
-    gallery: [
-      "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400",
-      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400",
-      "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400"
-    ],
-    contactInfo: [
-      {
-        name: "Dr. Rajesh Kumar",
-        role: "Faculty Advisor",
-        email: "rajesh.kumar@kec.edu",
-        phone: "+91-9876543210",
-        position: "Professor, CSE Department"
-      },
-      {
-        name: "Priya Sharma",
-        role: "Student President",
-        email: "priya.sharma@kec.edu",
-        phone: "+91-9876543211",
-        position: "Final Year CSE"
-      },
-      {
-        name: "Arun Patel",
-        role: "Technical Head",
-        email: "arun.patel@kec.edu",
-        phone: "+91-9876543212",
-        position: "Third Year IT"
-      }
-    ],
-    owner: "65a1b2c3d4e5f67890123459",
-    createdAt: new Date("2023-01-15T00:00:00.000Z"),
-    updatedAt: new Date("2024-01-20T00:00:00.000Z")
-  };
+  const [newLogo, setNewLogo] = useState(null);
+  const [newGallery, setNewGallery] = useState([]);
 
   useEffect(() => {
     loadClubProfile();
@@ -84,19 +48,35 @@ const ClubProfilePage = () => {
   const loadClubProfile = async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        setFormData({
-          name: dummyClub.name,
-          description: dummyClub.description,
-          logoUrl: dummyClub.logoUrl,
-          gallery: dummyClub.gallery,
-          contactInfo: dummyClub.contactInfo
-        });
-        setLoading(false);
-      }, 1000);
+      const token = user?.token;
+      
+      // Get user's clubs - your backend endpoint
+      const res = await axios.get('http://localhost:5000/api/clubs/my/clubs', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.data.length === 0) {
+        alert('You need to create a club first!');
+        navigate('/club/create-club');
+        return;
+      }
+
+      const userClub = res.data[0];
+      setClub(userClub);
+      
+      setFormData({
+        name: userClub.name || '',
+        description: userClub.description || '',
+        logoUrl: userClub.logoUrl || '',
+        gallery: userClub.gallery || [],
+        contactInfo: userClub.contactInfo || []
+      });
+      setLoading(false);
     } catch (error) {
       console.error('Error loading club profile:', error);
+      alert(error.response?.data?.message || 'Failed to load club profile. Please try again.');
       setLoading(false);
     }
   };
@@ -120,6 +100,7 @@ const ClubProfilePage = () => {
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setNewLogo(file);
       const logoUrl = URL.createObjectURL(file);
       setFormData(prev => ({
         ...prev,
@@ -130,14 +111,24 @@ const ClubProfilePage = () => {
 
   const handleGalleryUpload = (e) => {
     const files = Array.from(e.target.files);
-    const newGallery = files.map(file => URL.createObjectURL(file));
+    setNewGallery(prev => [...prev, ...files]);
+    
+    const newGalleryUrls = files.map(file => URL.createObjectURL(file));
     setFormData(prev => ({
       ...prev,
-      gallery: [...prev.gallery, ...newGallery]
+      gallery: [...prev.gallery, ...newGalleryUrls]
     }));
   };
 
-  const handleRemoveGalleryImage = (imageToRemove) => {
+  const handleRemoveGalleryImage = (imageToRemove, index) => {
+    // Remove from new gallery files if it's a blob URL
+    if (typeof imageToRemove === 'string' && imageToRemove.startsWith('blob:')) {
+      const blobIndex = formData.gallery.findIndex(img => img === imageToRemove);
+      if (blobIndex !== -1) {
+        setNewGallery(prev => prev.filter((_, i) => i !== blobIndex));
+      }
+    }
+    
     setFormData(prev => ({
       ...prev,
       gallery: prev.gallery.filter(image => image !== imageToRemove)
@@ -173,14 +164,51 @@ const ClubProfilePage = () => {
     setSaving(true);
 
     try {
-      // Simulate API call
-      setTimeout(() => {
-        console.log('Club profile updated:', formData);
-        setSaving(false);
-        // Show success message
-      }, 2000);
+      const formDataToSend = new FormData();
+
+      // Append basic fields
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('description', formData.description);
+      
+      // Append contact info as JSON
+      formDataToSend.append('contactInfo', JSON.stringify(formData.contactInfo));
+      
+      // Append gallery as JSON (existing images)
+      formDataToSend.append('gallery', JSON.stringify(formData.gallery.filter(img => !img.startsWith('blob:'))));
+
+      // Handle logo upload
+      if (newLogo) {
+        formDataToSend.append('logo', newLogo);
+      } else if (formData.logoUrl && !formData.logoUrl.startsWith('blob:')) {
+        // Keep existing logo if not changed
+        formDataToSend.append('logoUrl', formData.logoUrl);
+      }
+
+      // Handle new gallery images
+      newGallery.forEach((file) => {
+        formDataToSend.append('galleryImages', file);
+      });
+
+      const token = user?.token;
+      
+      // Update club using the correct endpoint - PUT /api/clubs/:id
+      await axios.put(
+        `http://localhost:5000/api/clubs/${club._id}`,
+        formDataToSend,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      alert('Club profile updated successfully!');
+      setSaving(false);
+      loadClubProfile(); // Reload to get updated data
     } catch (error) {
       console.error('Error updating club profile:', error);
+      alert(error.response?.data?.message || 'Failed to update club profile. Please try again.');
       setSaving(false);
     }
   };
@@ -191,6 +219,24 @@ const ClubProfilePage = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading club profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!club) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Club Found</h2>
+          <p className="text-gray-600 mb-6">You need to create a club first.</p>
+          <button
+            onClick={() => navigate('/club/create-club')}
+            className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
+          >
+            Create Club
+          </button>
         </div>
       </div>
     );
@@ -230,9 +276,12 @@ const ClubProfilePage = () => {
                   <div className="flex items-center space-x-6">
                     <div className="relative">
                       <img
-                        src={formData.logoUrl}
+                        src={formData.logoUrl || '/default-club-logo.png'}
                         alt="Club Logo"
                         className="w-32 h-32 rounded-2xl object-cover border-2 border-gray-200"
+                        onError={(e) => {
+                          e.target.src = '/default-club-logo.png';
+                        }}
                       />
                       <input
                         type="file"
@@ -322,10 +371,13 @@ const ClubProfilePage = () => {
                           src={image}
                           alt={`Gallery ${index + 1}`}
                           className="w-full h-32 object-cover rounded-lg"
+                          onError={(e) => {
+                            e.target.src = '/default-image.png';
+                          }}
                         />
                         <button
                           type="button"
-                          onClick={() => handleRemoveGalleryImage(image)}
+                          onClick={() => handleRemoveGalleryImage(image, index)}
                           className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="w-4 h-4" />
@@ -369,6 +421,7 @@ const ClubProfilePage = () => {
                       onChange={handleContactChange}
                       placeholder="Full Name *"
                       className="px-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
                     />
                     <input
                       type="text"
@@ -377,6 +430,7 @@ const ClubProfilePage = () => {
                       onChange={handleContactChange}
                       placeholder="Role *"
                       className="px-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
                     />
                     <input
                       type="email"
@@ -385,6 +439,7 @@ const ClubProfilePage = () => {
                       onChange={handleContactChange}
                       placeholder="Email *"
                       className="px-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
                     />
                     <input
                       type="tel"
@@ -440,10 +495,12 @@ const ClubProfilePage = () => {
                             <Mail className="w-4 h-4 text-gray-400" />
                             <span>{contact.email}</span>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <Phone className="w-4 h-4 text-gray-400" />
-                            <span>{contact.phone}</span>
-                          </div>
+                          {contact.phone && (
+                            <div className="flex items-center space-x-2">
+                              <Phone className="w-4 h-4 text-gray-400" />
+                              <span>{contact.phone}</span>
+                            </div>
+                          )}
                           {contact.position && (
                             <div className="md:col-span-2 flex items-center space-x-2">
                               <User className="w-4 h-4 text-gray-400" />

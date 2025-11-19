@@ -1,1 +1,1 @@
-export const Events = [];
+export const events = [];

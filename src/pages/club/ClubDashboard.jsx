@@ -14,8 +14,13 @@ import {
   ArrowRight,
   Building,
   Mail,
-  Phone
+  Phone,
+  Sparkles,
+  ArrowUpRight,
+  TrendingUp,
+  Activity
 } from 'lucide-react';
+import axios from 'axios';
 
 const ClubDashboard = () => {
   const { user } = useAuth();
@@ -25,93 +30,9 @@ const ClubDashboard = () => {
   const [stats, setStats] = useState({
     totalEvents: 0,
     upcomingEvents: 0,
-    totalParticipants: 0,
-    totalViews: 0
+    pastEvents: 0
   });
   const [loading, setLoading] = useState(true);
-
-  // Dummy club data
-  const dummyClub = {
-    _id: "65a1b2c3d4e5f67890123456",
-    name: "Computer Society of India - KEC",
-    description: "Leading computer science club organizing tech events, workshops, and hackathons for the college community.",
-    logoUrl: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200",
-    gallery: [
-      "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400",
-      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400"
-    ],
-    contactInfo: [
-      {
-        name: "Dr. Rajesh Kumar",
-        role: "Faculty Advisor",
-        email: "rajesh.kumar@kec.edu",
-        phone: "+91-9876543210",
-        position: "Professor, CSE Department"
-      },
-      {
-        name: "Priya Sharma",
-        role: "Student President",
-        email: "priya.sharma@kec.edu",
-        phone: "+91-9876543211",
-        position: "Final Year CSE"
-      }
-    ],
-    owner: "65a1b2c3d4e5f67890123459",
-    createdAt: new Date("2023-01-15T00:00:00.000Z"),
-    updatedAt: new Date("2024-01-20T00:00:00.000Z")
-  };
-
-  // Dummy events data
-  const dummyEvents = [
-    {
-      _id: "1",
-      title: "Tech Symposium 2024",
-      description: "Annual technology conference",
-      date: new Date("2024-03-15T10:00:00.000Z"),
-      time: "10:00 AM - 5:00 PM",
-      venue: "Main Auditorium",
-      eventType: "super",
-      tags: ["technology", "ai", "conference"],
-      posters: ["https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400"],
-      views: 245,
-      participantsCount: 156,
-      formLink: "https://forms.gle/example1",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-10T00:00:00.000Z")
-    },
-    {
-      _id: "2",
-      title: "Web Development Workshop",
-      description: "Hands-on workshop on modern web technologies",
-      date: new Date("2024-03-20T14:00:00.000Z"),
-      time: "2:00 PM - 6:00 PM",
-      venue: "Computer Lab 101",
-      eventType: "single",
-      tags: ["web development", "react", "workshop"],
-      posters: ["https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400"],
-      views: 189,
-      participantsCount: 45,
-      formLink: "https://forms.gle/example2",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-15T00:00:00.000Z")
-    },
-    {
-      _id: "3",
-      title: "AI Hackathon 2024",
-      description: "24-hour AI and ML hackathon",
-      date: new Date("2024-03-25T09:00:00.000Z"),
-      time: "9:00 AM (24 hours)",
-      venue: "Innovation Center",
-      eventType: "super",
-      tags: ["ai", "hackathon", "machine learning"],
-      posters: ["https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=400"],
-      views: 312,
-      participantsCount: 89,
-      formLink: "https://forms.gle/example3",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-20T00:00:00.000Z")
-    }
-  ];
 
   useEffect(() => {
     loadDashboardData();
@@ -120,34 +41,59 @@ const ClubDashboard = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        setClubInfo(dummyClub);
-        setEvents(dummyEvents);
-        
-        const currentDate = new Date();
-        const upcomingEvents = dummyEvents.filter(event => new Date(event.date) >= currentDate);
-        
-        setStats({
-          totalEvents: dummyEvents.length,
-          upcomingEvents: upcomingEvents.length,
-          totalParticipants: dummyEvents.reduce((sum, event) => sum + (event.participantsCount || 0), 0),
-          totalViews: dummyEvents.reduce((sum, event) => sum + (event.views || 0), 0)
-        });
-        setLoading(false);
-      }, 1000);
+      const token = user?.token;
+      
+      // Get user's club
+      const clubRes = await axios.get('http://localhost:5000/api/clubs/my/clubs', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (clubRes.data.length === 0) {
+        alert('You need to create a club first!');
+        navigate('/club/create-club');
+        return;
+      }
+
+      const userClub = clubRes.data[0];
+      setClubInfo(userClub);
+
+      // Get club events
+      const eventsRes = await axios.get(`http://localhost:5000/api/events/club/${userClub._id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const clubEvents = eventsRes.data.events || [];
+      setEvents(clubEvents);
+      
+      // Calculate stats - removed participants and views
+      const currentDate = new Date();
+      const upcomingEvents = clubEvents.filter(event => new Date(event.date) >= currentDate);
+      const pastEvents = clubEvents.filter(event => new Date(event.date) < currentDate);
+      
+      setStats({
+        totalEvents: clubEvents.length,
+        upcomingEvents: upcomingEvents.length,
+        pastEvents: pastEvents.length
+      });
+      
+      setLoading(false);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+      alert(error.response?.data?.message || 'Failed to load dashboard data. Please try again.');
       setLoading(false);
     }
   };
 
   const getEventTypeColor = (eventType) => {
     switch (eventType) {
-      case 'super': return 'bg-purple-100 text-purple-800';
-      case 'sub': return 'bg-orange-100 text-orange-800';
-      case 'single': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'super': return 'bg-gradient-to-r from-purple-500 to-pink-500 text-white';
+      case 'sub': return 'bg-gradient-to-r from-orange-500 to-red-500 text-white';
+      case 'single': return 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white';
+      default: return 'bg-gradient-to-r from-gray-500 to-gray-700 text-white';
     }
   };
 
@@ -160,9 +106,35 @@ const ClubDashboard = () => {
     }
   };
 
+  const getEventStatus = (eventDate) => {
+    const currentDate = new Date();
+    return new Date(eventDate) >= currentDate ? 'upcoming' : 'past';
+  };
+
+  const getStatusColor = (status) => {
+    return status === 'upcoming' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-gray-100 text-gray-800 border border-gray-200';
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return '';
+    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading dashboard...</p>
@@ -172,18 +144,20 @@ const ClubDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900">Club Dashboard</h1>
+              <h1 className="text-4xl font-bold text-gray-900 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                Club Dashboard
+              </h1>
               <p className="text-xl text-gray-600 mt-2">Manage your events and track performance</p>
             </div>
             <button
               onClick={() => navigate('/club/create-event')}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg"
+              className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg shadow-blue-500/25"
             >
               <Plus className="w-5 h-5" />
               <span>Create Event</span>
@@ -193,47 +167,57 @@ const ClubDashboard = () => {
 
         {/* Club Info Card */}
         {clubInfo && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border border-gray-200">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 mb-8 border border-gray-200/50 hover:shadow-xl transition-all duration-300">
             <div className="flex items-start space-x-6">
-              {clubInfo.logoUrl && (
-                <img
-                  src={clubInfo.logoUrl}
-                  alt={clubInfo.name}
-                  className="w-20 h-20 rounded-xl object-cover"
-                />
+              {clubInfo.logoUrl ? (
+                <div className="relative">
+                  <img
+                    src={clubInfo.logoUrl}
+                    alt={clubInfo.name}
+                    className="w-20 h-20 rounded-2xl object-cover shadow-lg border border-gray-200"
+                  />
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10"></div>
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                  <Building className="w-8 h-8 text-white" />
+                </div>
               )}
               <div className="flex-1">
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-                      <Building className="w-6 h-6 mr-2 text-blue-600" />
+                      <Sparkles className="w-5 h-5 mr-2 text-yellow-500" />
                       {clubInfo.name}
                     </h2>
-                    <p className="text-gray-600 mt-2">{clubInfo.description}</p>
+                    <p className="text-gray-600 mt-2 leading-relaxed">{clubInfo.description}</p>
                   </div>
                   <button
                     onClick={() => navigate('/club/profile')}
-                    className="text-blue-600 hover:text-blue-700 font-medium"
+                    className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg transition-all duration-200"
                   >
-                    Edit Profile
+                    <Edit className="w-4 h-4" />
+                    <span>Edit Profile</span>
                   </button>
                 </div>
                 
                 {/* Contact Info */}
                 {clubInfo.contactInfo && clubInfo.contactInfo.length > 0 && (
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {clubInfo.contactInfo.map((contact, index) => (
-                      <div key={index} className="bg-gray-50 rounded-lg p-3">
+                      <div key={index} className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 border border-gray-200/50 hover:border-blue-200 transition-all duration-200">
                         <p className="font-semibold text-gray-900">{contact.name}</p>
-                        <p className="text-sm text-gray-600">{contact.role}</p>
-                        <div className="flex items-center space-x-2 mt-1 text-sm text-gray-500">
+                        <p className="text-sm text-blue-600 font-medium">{contact.role}</p>
+                        <div className="flex items-center space-x-2 mt-2 text-sm text-gray-500">
                           <Mail className="w-4 h-4" />
-                          <span>{contact.email}</span>
+                          <span className="truncate">{contact.email}</span>
                         </div>
-                        <div className="flex items-center space-x-2 text-sm text-gray-500">
-                          <Phone className="w-4 h-4" />
-                          <span>{contact.phone}</span>
-                        </div>
+                        {contact.phone && (
+                          <div className="flex items-center space-x-2 text-sm text-gray-500 mt-1">
+                            <Phone className="w-4 h-4" />
+                            <span>{contact.phone}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -243,133 +227,171 @@ const ClubDashboard = () => {
           </div>
         )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+        {/* Stats Grid - Removed participants and views */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50 hover:shadow-xl transition-all duration-300 group">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Events</p>
                 <p className="text-3xl font-bold text-gray-900">{stats.totalEvents}</p>
+                <div className="flex items-center space-x-1 mt-1">
+                  <TrendingUp className="w-4 h-4 text-green-500" />
+                  <span className="text-sm text-green-600 font-medium">All time</span>
+                </div>
               </div>
-              <div className="p-3 bg-blue-100 rounded-full">
+              <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform duration-200">
                 <Calendar className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50 hover:shadow-xl transition-all duration-300 group">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Upcoming Events</p>
                 <p className="text-3xl font-bold text-gray-900">{stats.upcomingEvents}</p>
+                <div className="flex items-center space-x-1 mt-1">
+                  <Clock className="w-4 h-4 text-orange-500" />
+                  <span className="text-sm text-orange-600 font-medium">Scheduled</span>
+                </div>
               </div>
-              <div className="p-3 bg-green-100 rounded-full">
+              <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform duration-200">
                 <Clock className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50 hover:shadow-xl transition-all duration-300 group">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Participants</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalParticipants}</p>
+                <p className="text-sm font-medium text-gray-600">Past Events</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.pastEvents}</p>
+                <div className="flex items-center space-x-1 mt-1">
+                  <Calendar className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm text-gray-600 font-medium">Completed</span>
+                </div>
               </div>
-              <div className="p-3 bg-purple-100 rounded-full">
-                <Users className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Views</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalViews}</p>
-              </div>
-              <div className="p-3 bg-orange-100 rounded-full">
-                <Eye className="w-6 h-6 text-orange-600" />
+              <div className="p-3 bg-gray-100 rounded-xl group-hover:scale-110 transition-transform duration-200">
+                <Calendar className="w-6 h-6 text-gray-600" />
               </div>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Recent Events */}
+          {/* Events Grid - Card Layout */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-gray-900">Recent Events</h3>
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Calendar className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Recent Events</h3>
+                </div>
                 <button
-                  onClick={() => navigate('/club/manage-events')}
-                  className="text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1"
+                  onClick={() => navigate('/club/events/manage')}
+                  className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 font-medium bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-all duration-200 group"
                 >
                   <span>View All</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {events.slice(0, 5).map((event) => (
+              {/* Events Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {events.slice(0, 4).map((event) => (
                   <div
                     key={event._id}
-                    className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-200 cursor-pointer"
-                    onClick={() => navigate(`/club/edit-event/${event._id}`)}
+                    className="bg-white rounded-2xl shadow-lg border border-gray-200/50 hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer"
+                    onClick={() => navigate('/club/events/manage')}
                   >
-                    <div className="flex items-start space-x-4">
-                      {event.posters && event.posters.length > 0 && (
+                    {/* Event Image */}
+                    <div className="relative h-32 overflow-hidden">
+                      {event.posters && event.posters.length > 0 ? (
                         <img
                           src={event.posters[0]}
                           alt={event.title}
-                          className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                          <Calendar className="w-8 h-8 text-blue-600" />
+                        </div>
                       )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <h4 className="font-semibold text-gray-900 truncate">{event.title}</h4>
-                          <span className={`text-xs px-2 py-1 rounded-full ${getEventTypeColor(event.eventType)}`}>
-                            {getEventTypeDisplay(event.eventType)}
-                          </span>
-                        </div>
-                        <p className="text-gray-600 text-sm mb-2 line-clamp-2">{event.description}</p>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
-                          <div className="flex items-center space-x-1">
-                            <Calendar className="w-4 h-4" />
-                            <span>{new Date(event.date).toLocaleDateString()}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <MapPin className="w-4 h-4" />
-                            <span>{event.venue}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <Users className="w-4 h-4" />
-                            <span>{event.participantsCount} participants</span>
-                          </div>
-                        </div>
+                      
+                      {/* Status Badge */}
+                      <div className="absolute top-3 left-3">
+                        <span className={`inline-flex text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(getEventStatus(event.date))}`}>
+                          {getEventStatus(event.date)}
+                        </span>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/club/edit-event/${event._id}`);
-                        }}
-                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Edit Event"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
+                      
+                      {/* Event Type Badge */}
+                      <div className="absolute top-3 right-3">
+                        <span className={`inline-flex text-xs px-2 py-1 rounded-full font-medium ${getEventTypeColor(event.eventType)}`}>
+                          {getEventTypeDisplay(event.eventType)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Event Content */}
+                    <div className="p-4">
+                      <h4 className="font-bold text-gray-900 text-sm mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        {event.title}
+                      </h4>
+                      <p className="text-gray-600 text-xs mb-3 line-clamp-2">
+                        {event.description}
+                      </p>
+
+                      {/* Date and Time */}
+                      <div className="flex items-center text-xs text-gray-700 mb-2">
+                        <Calendar className="w-3 h-3 mr-1 text-gray-400 flex-shrink-0" />
+                        <span className="font-medium">{formatDate(event.date)}</span>
+                        {event.time && (
+                          <span className="ml-1 text-gray-500">• {formatTime(event.time)}</span>
+                        )}
+                      </div>
+
+                      {/* Venue */}
+                      <div className="flex items-center text-xs text-gray-700 mb-3">
+                        <MapPin className="w-3 h-3 mr-1 text-gray-400 flex-shrink-0" />
+                        <span className="truncate">{event.venue}</span>
+                      </div>
+
+                      {/* Tags */}
+                      {event.tags && event.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {event.tags.slice(0, 2).map((tag, index) => (
+                            <span
+                              key={index}
+                              className="inline-flex items-center text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
+                            >
+                              <Tag className="w-2 h-2 mr-1" />
+                              {tag}
+                            </span>
+                          ))}
+                          {event.tags.length > 2 && (
+                            <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
+                              +{event.tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
 
                 {events.length === 0 && (
-                  <div className="text-center py-8">
-                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-600">No events created yet</p>
+                  <div className="col-span-2 text-center py-12 bg-gradient-to-br from-gray-50 to-blue-50/30 rounded-2xl border-2 border-dashed border-gray-300">
+                    <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h4 className="text-lg font-semibold text-gray-900 mb-2">No events yet</h4>
+                    <p className="text-gray-600 mb-4">Start by creating your first event</p>
                     <button
                       onClick={() => navigate('/club/create-event')}
-                      className="mt-3 text-blue-600 hover:text-blue-700 font-medium"
+                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium shadow-lg shadow-blue-500/25"
                     >
-                      Create your first event
+                      Create First Event
                     </button>
                   </div>
                 )}
@@ -380,44 +402,56 @@ const ClubDashboard = () => {
           {/* Quick Actions & Analytics */}
           <div className="space-y-6">
             {/* Quick Actions */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Quick Actions</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50">
+              <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-yellow-500" />
+                Quick Actions
+              </h3>
               <div className="space-y-3">
                 <button
                   onClick={() => navigate('/club/create-event')}
-                  className="w-full flex items-center space-x-3 p-3 text-left bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors border border-blue-200"
+                  className="w-full flex items-center space-x-3 p-4 text-left bg-gradient-to-r from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 rounded-xl transition-all duration-200 border border-blue-200/50 hover:border-blue-300 group"
                 >
-                  <Plus className="w-5 h-5 text-blue-600" />
-                  <div>
+                  <div className="p-2 bg-blue-100 rounded-lg group-hover:scale-110 transition-transform">
+                    <Plus className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
                     <p className="font-semibold text-gray-900">Create New Event</p>
                     <p className="text-sm text-gray-600">Set up a new event</p>
                   </div>
+                  <ArrowUpRight className="w-4 h-4 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
                 <button
-                  onClick={() => navigate('/club/manage-events')}
-                  className="w-full flex items-center space-x-3 p-3 text-left bg-green-50 hover:bg-green-100 rounded-xl transition-colors border border-green-200"
+                  onClick={() => navigate(`/club/events/edit/${event._id}`)}
+                  className="w-full flex items-center space-x-3 p-4 text-left bg-gradient-to-r from-green-50 to-green-100/50 hover:from-green-100 hover:to-green-200/50 rounded-xl transition-all duration-200 border border-green-200/50 hover:border-green-300 group"
                 >
-                  <Edit className="w-5 h-5 text-green-600" />
-                  <div>
+                  <div className="p-2 bg-green-100 rounded-lg group-hover:scale-110 transition-transform">
+                    <Edit className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div className="flex-1">
                     <p className="font-semibold text-gray-900">Manage Events</p>
                     <p className="text-sm text-gray-600">View and edit all events</p>
                   </div>
+                  <ArrowUpRight className="w-4 h-4 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
                 <button
-                  onClick={() => navigate('/club/analytics')}
-                  className="w-full flex items-center space-x-3 p-3 text-left bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors border border-purple-200"
+                  onClick={() => navigate('/club/profile')}
+                  className="w-full flex items-center space-x-3 p-4 text-left bg-gradient-to-r from-purple-50 to-purple-100/50 hover:from-purple-100 hover:to-purple-200/50 rounded-xl transition-all duration-200 border border-purple-200/50 hover:border-purple-300 group"
                 >
-                  <BarChart3 className="w-5 h-5 text-purple-600" />
-                  <div>
-                    <p className="font-semibold text-gray-900">View Analytics</p>
-                    <p className="text-sm text-gray-600">Event performance insights</p>
+                  <div className="p-2 bg-purple-100 rounded-lg group-hover:scale-110 transition-transform">
+                    <BarChart3 className="w-5 h-5 text-purple-600" />
                   </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">Club Profile</p>
+                    <p className="text-sm text-gray-600">Update club information</p>
+                  </div>
+                  <ArrowUpRight className="w-4 h-4 text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
               </div>
             </div>
 
             {/* Event Tags Summary */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50">
               <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
                 <Tag className="w-5 h-5 mr-2 text-blue-600" />
                 Popular Tags
@@ -426,12 +460,60 @@ const ClubDashboard = () => {
                 {Array.from(new Set(events.flatMap(event => event.tags || []))).slice(0, 8).map((tag, index) => (
                   <span
                     key={index}
-                    className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm hover:bg-gray-200 transition-colors cursor-default"
+                    className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 px-3 py-1.5 rounded-full text-sm hover:from-gray-200 hover:to-gray-300 transition-all duration-200 cursor-default border border-gray-300/50 hover:border-gray-400/50"
                   >
                     #{tag}
                   </span>
                 ))}
+                {events.flatMap(event => event.tags || []).length === 0 && (
+                  <div className="text-center w-full py-4">
+                    <Tag className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-500 text-sm">No tags yet</p>
+                  </div>
+                )}
               </div>
+            </div>
+
+            {/* Upcoming Events Summary */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50">
+              <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                <Clock className="w-5 h-5 mr-2 text-green-600" />
+                Next Event
+              </h3>
+              {events.filter(event => new Date(event.date) >= new Date()).length > 0 ? (
+                <div className="space-y-2">
+                  {events
+                    .filter(event => new Date(event.date) >= new Date())
+                    .sort((a, b) => new Date(a.date) - new Date(b.date))
+                    .slice(0, 1)
+                    .map(event => (
+                      <div key={event._id} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200/50 hover:border-green-300 transition-all duration-200 group">
+                        <div className="flex items-start justify-between mb-3">
+                          <h4 className="font-semibold text-gray-900 group-hover:text-green-700 transition-colors">{event.title}</h4>
+                          <div className={`text-xs px-2 py-1 rounded-full font-medium ${getEventTypeColor(event.eventType)}`}>
+                            {getEventTypeDisplay(event.eventType)}
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {formatDate(event.date)} • {formatTime(event.time)}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate mb-3">{event.venue}</p>
+                        <button
+                          onClick={() => navigate(`/club/edit-event/${event._id}`)}
+                          className="w-full flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg transition-all duration-200 font-medium group"
+                        >
+                          <span>View Details</span>
+                          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-gradient-to-br from-gray-50 to-green-50/30 rounded-xl border-2 border-dashed border-gray-300">
+                  <Clock className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-500 text-sm">No upcoming events</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

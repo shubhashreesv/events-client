@@ -12,8 +12,13 @@ import {
   Search,
   Filter,
   Plus,
-  BarChart3
+  BarChart3,
+  ExternalLink,
+  X,
+  Clock,
+  Tag
 } from 'lucide-react';
+import axios from 'axios';
 
 const ManageEventsPage = () => {
   const { user } = useAuth();
@@ -24,77 +29,50 @@ const ManageEventsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-
-  // Dummy events data
-  const dummyEvents = [
-    {
-      _id: "1",
-      title: "Tech Symposium 2024",
-      description: "Annual technology conference",
-      date: new Date("2024-03-15T10:00:00.000Z"),
-      time: "10:00 AM - 5:00 PM",
-      venue: "Main Auditorium",
-      eventType: "super",
-      tags: ["technology", "ai", "conference"],
-      posters: ["https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400"],
-      views: 245,
-      participantsCount: 156,
-      formLink: "https://forms.gle/example1",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-10T00:00:00.000Z")
-    },
-    {
-      _id: "2",
-      title: "Web Development Workshop",
-      description: "Hands-on workshop on modern web technologies",
-      date: new Date("2024-03-20T14:00:00.000Z"),
-      time: "2:00 PM - 6:00 PM",
-      venue: "Computer Lab 101",
-      eventType: "single",
-      tags: ["web development", "react", "workshop"],
-      posters: ["https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400"],
-      views: 189,
-      participantsCount: 45,
-      formLink: "https://forms.gle/example2",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-15T00:00:00.000Z")
-    },
-    {
-      _id: "3",
-      title: "AI Hackathon 2024",
-      description: "24-hour AI and ML hackathon",
-      date: new Date("2024-03-25T09:00:00.000Z"),
-      time: "9:00 AM (24 hours)",
-      venue: "Innovation Center",
-      eventType: "super",
-      tags: ["ai", "hackathon", "machine learning"],
-      posters: ["https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=400"],
-      views: 312,
-      participantsCount: 89,
-      formLink: "https://forms.gle/example3",
-      createdBy: "65a1b2c3d4e5f67890123456",
-      createdAt: new Date("2024-01-20T00:00:00.000Z")
-    }
-  ];
+  const [selectedSheet, setSelectedSheet] = useState(null);
+  const [club, setClub] = useState(null);
 
   useEffect(() => {
-    loadEvents();
+    loadClubAndEvents();
   }, []);
 
   useEffect(() => {
     filterEvents();
   }, [events, searchQuery, statusFilter, typeFilter]);
 
-  const loadEvents = async () => {
+  const loadClubAndEvents = async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        setEvents(dummyEvents);
-        setLoading(false);
-      }, 1000);
+      const token = user?.token;
+      
+      // First, get the user's club
+      const clubRes = await axios.get('http://localhost:5000/api/clubs/my/clubs', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (clubRes.data.length === 0) {
+        alert('You need to create a club first!');
+        navigate('/club/create-club');
+        return;
+      }
+
+      const userClub = clubRes.data[0];
+      setClub(userClub);
+
+      // Then, get events for this club
+      const eventsRes = await axios.get(`http://localhost:5000/api/events/club/${userClub._id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      setEvents(eventsRes.data.events || []);
+      setLoading(false);
     } catch (error) {
-      console.error('Error loading events:', error);
+      console.error('Error loading club and events:', error);
+      alert(error.response?.data?.message || 'Failed to load events. Please try again.');
       setLoading(false);
     }
   };
@@ -128,24 +106,33 @@ const ManageEventsPage = () => {
 
     setFilteredEvents(filtered);
   };
-
+  
   const deleteEvent = async (eventId) => {
-    if (window.confirm('Are you sure you want to delete this event?')) {
+    if (window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
       try {
-        // Simulate API call
+        const token = user?.token;
+        await axios.delete(`http://localhost:5000/api/events/${eventId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        
+        // Remove from local state
         setEvents(prev => prev.filter(event => event._id !== eventId));
+        alert('Event deleted successfully!');
       } catch (error) {
         console.error('Error deleting event:', error);
+        alert(error.response?.data?.message || 'Failed to delete event. Please try again.');
       }
     }
   };
 
   const getEventTypeColor = (eventType) => {
     switch (eventType) {
-      case 'super': return 'bg-purple-100 text-purple-800';
-      case 'sub': return 'bg-orange-100 text-orange-800';
-      case 'single': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'super': return 'bg-gradient-to-r from-purple-500 to-pink-500 text-white';
+      case 'sub': return 'bg-gradient-to-r from-orange-500 to-red-500 text-white';
+      case 'single': return 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white';
+      default: return 'bg-gradient-to-r from-gray-500 to-gray-700 text-white';
     }
   };
 
@@ -164,12 +151,42 @@ const ManageEventsPage = () => {
   };
 
   const getStatusColor = (status) => {
-    return status === 'upcoming' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
+    return status === 'upcoming' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-gray-100 text-gray-800 border border-gray-200';
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return '';
+    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  // Generate sheet URL from formSheetId for preview
+  const getSheetPreviewUrl = (formSheetId) => {
+    if (!formSheetId) return null;
+    
+    // If it's already a full URL, use it directly
+    if (formSheetId.startsWith('http')) {
+      return formSheetId;
+    }
+    
+    // If it's just a sheet ID, construct the URL
+    return `https://docs.google.com/spreadsheets/d/${formSheetId}/edit?usp=sharing`;
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading events...</p>
@@ -179,11 +196,11 @@ const ManageEventsPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Back Button */}
       <button
         onClick={() => navigate('/club/dashboard')}
-        className="fixed top-6 left-6 z-50 p-3 bg-white/90 hover:bg-white text-gray-700 hover:text-blue-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 backdrop-blur-sm"
+        className="fixed top-6 left-6 z-50 p-3 bg-white/90 hover:bg-white text-gray-700 hover:text-blue-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 backdrop-blur-sm border border-gray-200"
         title="Back to Dashboard"
       >
         <ArrowLeft className="w-6 h-6" />
@@ -192,14 +209,18 @@ const ManageEventsPage = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900">Manage Events</h1>
-              <p className="text-xl text-gray-600 mt-2">View and manage all your events</p>
+              <h1 className="text-4xl font-bold text-gray-900 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                Manage Events
+              </h1>
+              <p className="text-xl text-gray-600 mt-2">
+                Manage events for <span className="font-semibold text-blue-600">{club?.name}</span>
+              </p>
             </div>
             <button
               onClick={() => navigate('/club/create-event')}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg"
+              className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg shadow-blue-500/25"
             >
               <Plus className="w-5 h-5" />
               <span>Create Event</span>
@@ -208,20 +229,20 @@ const ManageEventsPage = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Events</p>
                 <p className="text-2xl font-bold text-gray-900">{events.length}</p>
               </div>
-              <div className="p-3 bg-blue-100 rounded-full">
+              <div className="p-3 bg-blue-100 rounded-xl">
                 <Calendar className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Upcoming</p>
@@ -229,43 +250,29 @@ const ManageEventsPage = () => {
                   {events.filter(event => getEventStatus(event.date) === 'upcoming').length}
                 </p>
               </div>
-              <div className="p-3 bg-green-100 rounded-full">
+              <div className="p-3 bg-green-100 rounded-xl">
                 <Calendar className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-200/50 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Participants</p>
+                <p className="text-sm font-medium text-gray-600">Past Events</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {events.reduce((sum, event) => sum + (event.participantsCount || 0), 0)}
+                  {events.filter(event => getEventStatus(event.date) === 'past').length}
                 </p>
               </div>
-              <div className="p-3 bg-purple-100 rounded-full">
-                <Users className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Views</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {events.reduce((sum, event) => sum + (event.views || 0), 0)}
-                </p>
-              </div>
-              <div className="p-3 bg-orange-100 rounded-full">
-                <Eye className="w-6 h-6 text-orange-600" />
+              <div className="p-3 bg-gray-100 rounded-xl">
+                <Clock className="w-6 h-6 text-gray-600" />
               </div>
             </div>
           </div>
         </div>
 
         {/* Search and Filters */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border border-gray-200">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 mb-8 border border-gray-200/50">
           <div className="flex flex-col lg:flex-row gap-6">
             {/* Search */}
             <div className="flex-1 relative">
@@ -275,7 +282,7 @@ const ManageEventsPage = () => {
                 placeholder="Search events by title, description, or tags..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white/50 backdrop-blur-sm"
               />
             </div>
 
@@ -284,7 +291,7 @@ const ManageEventsPage = () => {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 min-w-[140px]"
+                className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 min-w-[140px] bg-white/50 backdrop-blur-sm"
               >
                 <option value="all">All Status</option>
                 <option value="upcoming">Upcoming</option>
@@ -294,26 +301,33 @@ const ManageEventsPage = () => {
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
-                className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 min-w-[140px]"
+                className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 min-w-[140px] bg-white/50 backdrop-blur-sm"
               >
                 <option value="all">All Types</option>
-                <option value="single">Single</option>
+                <option value="single">Single Event</option>
                 <option value="super">Main Event</option>
                 <option value="sub">Sub Event</option>
               </select>
 
-              <button className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all duration-200 flex items-center font-medium">
+              <button 
+                onClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter('all');
+                  setTypeFilter('all');
+                }}
+                className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all duration-200 flex items-center font-medium border border-gray-300"
+              >
                 <Filter className="w-5 h-5 mr-2" />
-                More Filters
+                Clear Filters
               </button>
             </div>
           </div>
         </div>
 
-        {/* Events Table */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+        {/* Events Grid */}
+        <div className="mb-8">
           {filteredEvents.length === 0 ? (
-            <div className="text-center py-16">
+            <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50">
               <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">No events found</h3>
               <p className="text-gray-600 mb-6">
@@ -325,112 +339,173 @@ const ManageEventsPage = () => {
               {events.length === 0 && (
                 <button
                   onClick={() => navigate('/club/create-event')}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-colors font-medium shadow-lg shadow-blue-500/25"
                 >
                   Create Your First Event
                 </button>
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Event</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Date & Time</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Venue</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Type</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Participants</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Views</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredEvents.map((event) => (
-                    <tr key={event._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-4">
-                          {event.posters && event.posters.length > 0 && (
-                            <img
-                              src={event.posters[0]}
-                              alt={event.title}
-                              className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <p className="font-semibold text-gray-900 truncate">{event.title}</p>
-                            <p className="text-sm text-gray-500 truncate">{event.description}</p>
-                          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredEvents.map((event) => {
+                const sheetPreviewUrl = getSheetPreviewUrl(event.formSheetId);
+                const isUpcoming = getEventStatus(event.date) === 'upcoming';
+                
+                return (
+                  <div
+                    key={event._id}
+                    className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 hover:shadow-xl transition-all duration-300 overflow-hidden group"
+                  >
+                    {/* Event Image */}
+                    <div className="relative h-48 overflow-hidden">
+                      {event.posters && event.posters.length > 0 ? (
+                        <img 
+                          src={event.posters?.[0]?.url} 
+                          alt={event.title} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        />
+
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                          <Calendar className="w-12 h-12 text-blue-600" />
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">
-                          {new Date(event.date).toLocaleDateString()}
-                        </div>
-                        <div className="text-sm text-gray-500">{event.time}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center text-sm text-gray-900">
-                          <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                          {event.venue}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex text-xs px-2 py-1 rounded-full font-medium ${getEventTypeColor(event.eventType)}`}>
-                          {getEventTypeDisplay(event.eventType)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(getEventStatus(event.date))}`}>
+                      )}
+                      
+                      {/* Status Badge */}
+                      <div className="absolute top-4 left-4">
+                        <span className={`inline-flex text-xs px-3 py-1 rounded-full font-medium ${getStatusColor(getEventStatus(event.date))}`}>
                           {getEventStatus(event.date)}
                         </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center text-sm text-gray-900">
-                          <Users className="w-4 h-4 mr-2 text-gray-400" />
-                          {event.participantsCount || 0}
+                      </div>
+                      
+                      {/* Event Type Badge */}
+                      <div className="absolute top-4 right-4">
+                        <span className={`inline-flex text-xs px-3 py-1 rounded-full font-medium ${getEventTypeColor(event.eventType)}`}>
+                          {getEventTypeDisplay(event.eventType)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Event Content */}
+                    <div className="p-6">
+                      {/* Title and Description */}
+                      <h3 className="font-bold text-gray-900 text-lg mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        {event.title}
+                      </h3>
+                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                        {event.description}
+                      </p>
+
+                      {/* Date and Time */}
+                      <div className="flex items-center text-sm text-gray-700 mb-3">
+                        <Calendar className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+                        <span className="font-medium">{formatDate(event.date)}</span>
+                        {event.time && (
+                          <span className="ml-2 text-gray-500">• {formatTime(event.time)}</span>
+                        )}
+                      </div>
+
+                      {/* Venue */}
+                      <div className="flex items-center text-sm text-gray-700 mb-4">
+                        <MapPin className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+                        <span className="truncate">{event.venue}</span>
+                      </div>
+
+                      {/* Tags */}
+                      {event.tags && event.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-4">
+                          {event.tags.slice(0, 3).map((tag, index) => (
+                            <span
+                              key={index}
+                              className="inline-flex items-center text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full"
+                            >
+                              <Tag className="w-3 h-3 mr-1" />
+                              {tag}
+                            </span>
+                          ))}
+                          {event.tags.length > 3 && (
+                            <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
+                              +{event.tags.length - 3} more
+                            </span>
+                          )}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center text-sm text-gray-900">
-                          <Eye className="w-4 h-4 mr-2 text-gray-400" />
-                          {event.views || 0}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-200/50">
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => navigate(`/club/edit-event/${event._id}`)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200"
                             title="Edit Event"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => navigate(`/club/analytics/${event._id}`)}
-                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="View Analytics"
-                          >
-                            <BarChart3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteEvent(event._id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Delete Event"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          
+                          {event.formLink && (
+                            <a
+                              href={event.formLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors border border-green-200"
+                              title="Open Form"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          )}
+                          
+                          {sheetPreviewUrl && (
+                            <button
+                              onClick={() => setSelectedSheet(sheetPreviewUrl)}
+                              className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors border border-purple-200"
+                              title="View Sheet"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        
+                        <button
+                          onClick={() => deleteEvent(event._id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200"
+                          title="Delete Event"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
+
+      {/* Sheet Modal */}
+      {selectedSheet && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-6xl h-5/6 flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-900">Sheet Preview</h3>
+              <button
+                onClick={() => setSelectedSheet(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="flex-1 p-6">
+              <iframe
+                src={selectedSheet}
+                className="w-full h-full rounded-lg border border-gray-200"
+                frameBorder="0"
+                title="Sheet Preview"
+              ></iframe>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

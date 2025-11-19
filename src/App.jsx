@@ -29,6 +29,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import ManageUsersPage from './pages/admin/ManageUsersPage';
 import ManageClubsPage from './pages/admin/ManageClubsPage';
 import AdminNotificationsPage from './pages/admin/AdminNotificationsPage';
+import AdminLayout from './components/admin/AdminLayout';
 
 // Misc Pages
 import HomePage from './pages/misc/HomePage';
@@ -73,6 +74,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        
         <Route
           path="/student/notifications"
           element={
@@ -89,9 +91,17 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        {/* Student Event Registration */}
+        <Route
+          path="/student/event-registration/:id"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <EventRegistrationPage />
+            </ProtectedRoute>
+          }
+        />
 
-        <Route path="/student/event/:id" element={<EventRegistrationPage />} />
-
+        
 
         {/* Club Routes */}
         <Route
@@ -135,7 +145,7 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/club/contacts"
+          path="/clubs/:slug/contacts"
           element={
             <ProtectedRoute allowedRoles={['club']}>
               <ClubContactsPage />
@@ -167,44 +177,23 @@ function AppRoutes() {
           }
         />
 
-        {/* Admin Routes */}
+
         <Route
-          path="/admin/dashboard"
+          path="/admin/*"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/users"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <ManageUsersPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <ManageClubsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/contacts"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <ManageContacts/>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/notifications"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminNotificationsPage />
+              <AdminLayout>
+                <Routes>
+                  <Route path="dashboard" element={<AdminDashboard />} />
+                  <Route path="users" element={<ManageUsersPage />} />
+                  <Route path="clubs" element={<ManageClubsPage />} />
+                  <Route path="clubs/edit/:id" element={<ManageClubsPage />} />
+                  <Route path="contacts" element={<ManageContacts />} />
+                  <Route path="notifications" element={<AdminNotificationsPage />} />
+                  {/* Redirect /admin to /admin/dashboard */}
+                  <Route path="" element={<AdminDashboard />} />
+                </Routes>
+              </AdminLayout>
             </ProtectedRoute>
           }
         />

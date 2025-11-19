@@ -12,8 +12,10 @@ import {
   Link,
   Image as ImageIcon,
   X,
-  Trash2
+  Trash2,
+  Eye
 } from 'lucide-react';
+import axios from 'axios';
 
 const EditEventPage = () => {
   const { user } = useAuth();
@@ -21,6 +23,7 @@ const EditEventPage = () => {
   const { id } = useParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [selectedSheet, setSelectedSheet] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -30,35 +33,12 @@ const EditEventPage = () => {
     eventType: 'single',
     tags: [],
     formLink: '',
-    formSheetId: '',
+    formSheetId: '', // Changed to match backend model
     posters: [],
     parentEvent: ''
   });
   const [newTag, setNewTag] = useState('');
-
-  // Dummy event data
-  const dummyEvent = {
-    _id: "1",
-    title: "Tech Symposium 2024",
-    description: "Annual technology conference featuring the latest trends in AI, Machine Learning, Web Development, and Cybersecurity. Join us for insightful talks, hands-on workshops, and networking opportunities with industry experts.",
-    date: "2024-03-15",
-    time: "10:00",
-    venue: "Main Auditorium",
-    eventType: "super",
-    tags: ["technology", "ai", "conference", "workshop"],
-    posters: [
-      "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800",
-      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800"
-    ],
-    views: 245,
-    participantsCount: 156,
-    formLink: "https://forms.gle/example1",
-    formSheetId: "sheet_001",
-    createdBy: "65a1b2c3d4e5f67890123456",
-    parentEvent: null,
-    createdAt: new Date("2024-01-10T00:00:00.000Z"),
-    updatedAt: new Date("2024-02-01T00:00:00.000Z")
-  };
+  const [newPosters, setNewPosters] = useState([]);
 
   const eventTypes = [
     { value: 'single', label: 'Single Event' },
@@ -73,26 +53,39 @@ const EditEventPage = () => {
   const loadEvent = async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        const event = dummyEvent;
-        setFormData({
-          title: event.title,
-          description: event.description,
-          date: event.date,
-          time: event.time,
-          venue: event.venue,
-          eventType: event.eventType,
-          tags: event.tags,
-          formLink: event.formLink,
-          formSheetId: event.formSheetId,
-          posters: event.posters,
-          parentEvent: event.parentEvent || ''
-        });
-        setLoading(false);
-      }, 1000);
+      const token = user?.token;
+      const res = await axios.get(`http://localhost:5000/api/events/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      const event = res.data;
+      
+      // Format date for input field (YYYY-MM-DD)
+      const eventDate = new Date(event.date);
+      const formattedDate = eventDate.toISOString().split('T')[0];
+      
+      // Format time for input field (HH:MM)
+      const formattedTime = event.time || '12:00';
+      
+      setFormData({
+        title: event.title || '',
+        description: event.description || '',
+        date: formattedDate,
+        time: formattedTime,
+        venue: event.venue || '',
+        eventType: event.eventType || 'single',
+        tags: event.tags || [],
+        formLink: event.formLink || '',
+        formSheetId: event.formSheetId || '', // Using formSheetId from backend
+        posters: event.posters || [],
+        parentEvent: event.parentEvent || ''
+      });
+      setLoading(false);
     } catch (error) {
       console.error('Error loading event:', error);
+      alert(error.response?.data?.message || 'Failed to load event. Please try again.');
       setLoading(false);
     }
   };
@@ -124,19 +117,20 @@ const EditEventPage = () => {
 
   const handlePosterUpload = (e) => {
     const files = Array.from(e.target.files);
-    // In a real app, you would upload to cloud storage and get URLs
-    const newPosters = files.map(file => URL.createObjectURL(file));
-    setFormData(prev => ({
-      ...prev,
-      posters: [...prev.posters, ...newPosters]
-    }));
+    setNewPosters(prev => [...prev, ...files]);
   };
 
   const handleRemovePoster = (posterToRemove) => {
-    setFormData(prev => ({
-      ...prev,
-      posters: prev.posters.filter(poster => poster !== posterToRemove)
-    }));
+    if (typeof posterToRemove === 'string') {
+      // Remove existing poster URL
+      setFormData(prev => ({
+        ...prev,
+        posters: prev.posters.filter(poster => poster !== posterToRemove)
+      }));
+    } else {
+      // Remove new poster file
+      setNewPosters(prev => prev.filter(poster => poster !== posterToRemove));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -144,14 +138,58 @@ const EditEventPage = () => {
     setSaving(true);
 
     try {
-      // Simulate API call
-      setTimeout(() => {
-        console.log('Event updated:', formData);
-        setSaving(false);
-        navigate('/club/manage-events');
-      }, 2000);
+      const formDataToSend = new FormData();
+
+      // Append all text fields - matching backend Event model exactly
+      Object.entries(formData).forEach(([key, value]) => {
+        if (key === "tags") {
+          formDataToSend.append(key, JSON.stringify(value));
+        } else if (key === "date" && formData.time) {
+          // Combine date and time for backend DateTime field
+          const dateTime = new Date(`${formData.date}T${formData.time}`);
+          formDataToSend.append('date', dateTime.toISOString());
+        } else if (key === "time") {
+          // Also send time separately for display
+          formDataToSend.append('time', value);
+        } else if (key !== "posters") {
+          formDataToSend.append(key, value);
+        }
+      });
+
+      // Append new poster files
+      newPosters.forEach((file) => {
+        formDataToSend.append("posters", file);
+      });
+
+      // For existing posters, we need to handle them differently
+      // Since your backend updateEvent doesn't handle file uploads,
+      // we'll send existing poster URLs as part of the form data
+      formData.posters.forEach((posterUrl, index) => {
+        if (typeof posterUrl === 'string') {
+          formDataToSend.append(`posters[${index}]`, posterUrl);
+        }
+      });
+
+      const token = user?.token;
+      const res = await axios.put(
+        `http://localhost:5000/api/events/${id}`,
+        formDataToSend,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      alert('Event updated successfully!');
+      setSaving(false);
+      navigate("/club/manage-events");
     } catch (error) {
-      console.error('Error updating event:', error);
+      console.error("Error updating event:", error);
+      const errorMessage = error.response?.data?.message || 
+                          'Failed to update event. Please try again.';
+      alert(errorMessage);
       setSaving(false);
     }
   };
@@ -159,12 +197,17 @@ const EditEventPage = () => {
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
       try {
-        // Simulate API call
-        setTimeout(() => {
-          navigate('/club/manage-events');
-        }, 1000);
+        const token = user?.token;
+        await axios.delete(`http://localhost:5000/api/events/${id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        alert('Event deleted successfully!');
+        navigate('/club/manage-events');
       } catch (error) {
         console.error('Error deleting event:', error);
+        alert(error.response?.data?.message || 'Failed to delete event. Please try again.');
       }
     }
   };
@@ -176,6 +219,22 @@ const EditEventPage = () => {
            formData.time && 
            formData.venue.trim();
   };
+
+  // Generate sheet URL from formSheetId for preview
+  const getSheetPreviewUrl = () => {
+    if (!formData.formSheetId) return null;
+    
+    // If it's already a full URL, use it directly
+    if (formData.formSheetId.startsWith('http')) {
+      return formData.formSheetId;
+    }
+    
+    // If it's just a sheet ID, construct the URL
+    // This assumes Google Sheets - adjust based on your actual sheet service
+    return `https://docs.google.com/spreadsheets/d/${formData.formSheetId}/edit?usp=sharing`;
+  };
+
+  const sheetPreviewUrl = getSheetPreviewUrl();
 
   if (loading) {
     return (
@@ -367,30 +426,57 @@ const EditEventPage = () => {
                 Registration
               </h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Google Form Link</label>
-                  <input
-                    type="url"
-                    name="formLink"
-                    value={formData.formLink}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                    placeholder="https://forms.gle/..."
-                  />
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Google Form Link</label>
+                    <input
+                      type="url"
+                      name="formLink"
+                      value={formData.formLink}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                      placeholder="https://forms.gle/..."
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Google Sheet ID/URL</label>
+                    <input
+                      type="text"
+                      name="formSheetId"
+                      value={formData.formSheetId}
+                      onChange={handleInputChange}
+                      placeholder="Sheet ID or full URL"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Enter Google Sheet ID (e.g., 1abc123def456) or full URL
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Form Sheet ID</label>
-                  <input
-                    type="text"
-                    name="formSheetId"
-                    value={formData.formSheetId}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                    placeholder="Sheet ID for responses"
-                  />
-                </div>
+                {sheetPreviewUrl && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-medium text-gray-700">Sheet Preview</label>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSheet(sheetPreviewUrl)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>View Sheet</span>
+                      </button>
+                    </div>
+                    <iframe
+                      src={sheetPreviewUrl}
+                      className="w-full h-96 rounded-lg border border-gray-200"
+                      frameBorder="0"
+                      title={`${formData.title} Sheet`}
+                    ></iframe>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -423,13 +509,29 @@ const EditEventPage = () => {
                   </label>
                 </div>
 
-                {formData.posters.length > 0 && (
+                {(formData.posters.length > 0 || newPosters.length > 0) && (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {formData.posters.map((poster, index) => (
-                      <div key={index} className="relative group">
+                      <div key={`existing-${index}`} className="relative group">
                         <img
                           src={poster}
                           alt={`Poster ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePoster(poster)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    {newPosters.map((poster, index) => (
+                      <div key={`new-${index}`} className="relative group">
+                        <img
+                          src={URL.createObjectURL(poster)}
+                          alt={`New Poster ${index + 1}`}
                           className="w-full h-32 object-cover rounded-lg"
                         />
                         <button
@@ -476,6 +578,31 @@ const EditEventPage = () => {
           </div>
         </form>
       </div>
+
+      {/* Sheet Modal */}
+      {selectedSheet && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-6xl h-5/6 flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-900">Sheet Preview</h3>
+              <button
+                onClick={() => setSelectedSheet(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="flex-1 p-6">
+              <iframe
+                src={selectedSheet}
+                className="w-full h-full rounded-lg border border-gray-200"
+                frameBorder="0"
+                title="Sheet Preview"
+              ></iframe>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

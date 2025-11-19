@@ -20,32 +20,35 @@ function LoginPage() {
   }, []);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!email || !password) {
-      setError('Please fill in all fields');
-      return;
-    }
-    
-    setLoading(true);
-    setError('');
+  e.preventDefault();
+  if (!email || !password) {
+    setError('Please fill in all fields');
+    return;
+  }
+  
+  setLoading(true);
+  setError('');
 
-    try {
-      const result = await login(email, password);
-      if (result.success) {
-        setTransitionStage('exit');
-        setTimeout(() => {
-          // Redirect based on user role
-          if (result.user.role === 'admin') {
-            navigate('/admin/dashboard');
-          } else if (result.user.role === 'club') {
-            navigate('/club/dashboard');
-          } else {
-            navigate('/student/dashboard');
-          }
-        }, 300);
-      } else {
-        setError(result.error || 'Invalid credentials. Please try again.');
-      }
+  try {
+    const result = await login(email, password);
+    if (result.success) {
+      setTransitionStage('exit');
+      setTimeout(() => {
+        // Redirect based on user role
+        const userRole = result.user.isAdmin ? 'admin' : 
+                        result.user.clubRef ? 'club' : 'student';
+        
+        if (userRole === 'admin') {
+          navigate('/admin/dashboard');
+        } else if (userRole === 'club') {
+          navigate('/club/dashboard');
+        } else {
+          navigate('/');
+        }
+      }, 300);
+    } else {
+      setError(result.error || 'Invalid credentials. Please try again.');
+    }
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
     } finally {

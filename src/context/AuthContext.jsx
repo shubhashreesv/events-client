@@ -1,5 +1,5 @@
-// src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -16,75 +16,90 @@ export const AuthProvider = ({ children }) => {
 
   // DEV MODE Configuration
   const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true';
-  const DEFAULT_DEV_ROLE = 'student'; // Change this manually to test different roles: 'student', 'club', 'admin'
 
   useEffect(() => {
     if (DEV_MODE) {
       // DEV MODE: Auto-login with specified role
       console.warn('🔧 DEV MODE: Using mock authentication');
       const mockUser = {
-        id: 'dev-123',
+        _id: 'dev-123',
         name: 'Dev User',
         email: 'dev@kec.edu',
-        role: DEFAULT_DEV_ROLE,
-        avatar: null,
-        createdAt: new Date().toISOString(),
+        department: 'CSE',
+        year: 'III Year',
+        isAdmin: false,
+        isActive: true,
+        clubRef: null,
+        token: 'dev-token'
       };
       setUser(mockUser);
       setIsAuthenticated(true);
+      localStorage.setItem('user', JSON.stringify(mockUser));
+      localStorage.setItem('token', 'dev-token');
       setLoading(false);
       return;
     }
 
-    // Production behavior
+    // Production behavior - check for stored user data
+    const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('token');
-    if (token) {
-      verifyToken();
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  const verifyToken = async () => {
-    try {
-      // In production, this would verify with backend
-      const token = localStorage.getItem('token');
-      if (token) {
+    
+    if (storedUser && token) {
+      try {
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
         setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Error parsing stored user:', error);
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
       }
-    } catch (error) {
-      console.error('Token verification failed:', error);
-      localStorage.removeItem('token');
-      setUser(null);
-      setIsAuthenticated(false);
-    } finally {
-      setLoading(false);
     }
-  };
+    setLoading(false);
+  }, []);
 
   const login = async (email, password) => {
     if (DEV_MODE) {
       // DEV MODE: Auto login with role detection from email
-      const role = email.includes('club') ? 'club' : email.includes('admin') ? 'admin' : 'student';
+      const isAdmin = email.includes('admin');
+      const isClub = email.includes('club');
+      
       const mockUser = {
-        id: 'dev-' + Math.random().toString(36).substr(2, 9),
+        _id: 'dev-' + Math.random().toString(36).substr(2, 9),
         name: email.split('@')[0],
         email: email,
-        role: role,
-        avatar: null,
-        createdAt: new Date().toISOString(),
+        department: isClub || isAdmin ? null : 'CSE',
+        year: isClub || isAdmin ? null : 'III Year',
+        isAdmin: isAdmin,
+        isActive: true,
+        clubRef: isClub ? { _id: 'dev-club-123', name: 'Dev Club' } : null,
+        token: 'dev-token-' + Math.random().toString(36).substr(2, 9)
       };
+      
       setUser(mockUser);
       setIsAuthenticated(true);
+      localStorage.setItem('user', JSON.stringify(mockUser));
+      localStorage.setItem('token', mockUser.token);
+      
       return { success: true, user: mockUser };
     }
 
-    // Production login logic would go here
+    // Production login logic
     try {
-      // Simulate API call
-      return { success: true, user: { email, role: 'student' } };
+      const response = await authAPI.login({ email, password });
+      
+      if (response.data) {
+        const userData = response.data;
+        setUser(userData);
+        setIsAuthenticated(true);
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('token', userData.token);
+        
+        return { success: true, user: userData };
+      }
     } catch (error) {
-      return { success: false, error: 'Login failed' };
+      const errorMessage = error.response?.data?.message || 'Login failed. Please try again.';
+      return { success: false, error: errorMessage };
     }
   };
 
@@ -92,40 +107,57 @@ export const AuthProvider = ({ children }) => {
     if (DEV_MODE) {
       // DEV MODE: Auto signup
       const mockUser = {
-        id: 'dev-' + Math.random().toString(36).substr(2, 9),
+        _id: 'dev-' + Math.random().toString(36).substr(2, 9),
         name: userData.name,
         email: userData.email,
-        role: userData.role || 'student',
-        avatar: null,
-        createdAt: new Date().toISOString(),
+        department: userData.department,
+        year: userData.year,
+        isAdmin: false,
+        isActive: true,
+        clubRef: null,
+        token: 'dev-token-' + Math.random().toString(36).substr(2, 9)
       };
+      
       setUser(mockUser);
       setIsAuthenticated(true);
+      localStorage.setItem('user', JSON.stringify(mockUser));
+      localStorage.setItem('token', mockUser.token);
+      
       return { success: true, user: mockUser };
     }
 
-    // Production signup logic would go here
-    return { success: true, user: userData };
+    // Production signup logic
+    try {
+      const response = await authAPI.signup(userData);
+      
+      if (response.data) {
+        const newUser = response.data;
+        setUser(newUser);
+        setIsAuthenticated(true);
+        localStorage.setItem('user', JSON.stringify(newUser));
+        localStorage.setItem('token', newUser.token);
+        
+        return { success: true, user: newUser };
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'Registration failed. Please try again.';
+      return { success: false, error: errorMessage };
+    }
   };
 
   const logout = () => {
-    if (!DEV_MODE) {
-      localStorage.removeItem('token');
-    }
     setUser(null);
     setIsAuthenticated(false);
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
   };
 
-  // DEV MODE: Method to switch roles easily
-  const switchRole = (newRole) => {
-    if (DEV_MODE && user) {
-      const updatedUser = {
-        ...user,
-        role: newRole
-      };
-      setUser(updatedUser);
-      console.log(`🔧 DEV MODE: Switched to ${newRole} role`);
-    }
+  // Determine user role for frontend routing
+  const getUserRole = () => {
+    if (!user) return null;
+    if (user.isAdmin) return 'admin';
+    if (user.clubRef) return 'club';
+    return 'student';
   };
 
   const value = {
@@ -141,13 +173,13 @@ export const AuthProvider = ({ children }) => {
     
     // DEV MODE Features
     devMode: DEV_MODE,
-    switchRole,
     
     // Utility methods
-    hasRole: (role) => user?.role === role,
-    isStudent: () => user?.role === 'student',
-    isClub: () => user?.role === 'club',
-    isAdmin: () => user?.role === 'admin',
+    hasRole: (role) => getUserRole() === role,
+    isStudent: () => getUserRole() === 'student',
+    isClub: () => getUserRole() === 'club',
+    isAdmin: () => getUserRole() === 'admin',
+    getUserRole,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

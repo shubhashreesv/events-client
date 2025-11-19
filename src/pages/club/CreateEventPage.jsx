@@ -1,3 +1,4 @@
+// client/src/pages/club/CreateEventPage.jsx
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +14,7 @@ import {
   Image as ImageIcon,
   X
 } from 'lucide-react';
+import axios from 'axios';
 
 const CreateEventPage = () => {
   const { user } = useAuth();
@@ -27,9 +29,12 @@ const CreateEventPage = () => {
     eventType: 'single',
     tags: [],
     formLink: '',
-    formSheetId: '',
+    formSheetId: '', // Changed back to match backend model
+    formEmbedCode: '',
     posters: [],
-    parentEvent: ''
+    parentEvent: '',
+    teamSize: '',
+    deadline: ''
   });
   const [newTag, setNewTag] = useState('');
 
@@ -66,11 +71,9 @@ const CreateEventPage = () => {
 
   const handlePosterUpload = (e) => {
     const files = Array.from(e.target.files);
-    // In a real app, you would upload to cloud storage and get URLs
-    const newPosters = files.map(file => URL.createObjectURL(file));
     setFormData(prev => ({
       ...prev,
-      posters: [...prev.posters, ...newPosters]
+      posters: [...prev.posters, ...files]
     }));
   };
 
@@ -86,14 +89,60 @@ const CreateEventPage = () => {
     setLoading(true);
 
     try {
-      // Simulate API call
-      setTimeout(() => {
-        console.log('Event created:', formData);
-        setLoading(false);
-        navigate('/club/manage-events');
-      }, 2000);
+      const formDataToSend = new FormData();
+
+      // Append all text fields - matching backend Event model exactly
+      Object.entries(formData).forEach(([key, value]) => {
+        if (key === "tags") {
+          // Send tags as JSON array
+          formDataToSend.append(key, JSON.stringify(value));
+        } else if (key === "date" && formData.time) {
+          // Combine date and time for backend Date field
+          const dateTime = new Date(`${formData.date}T${formData.time}`);
+          formDataToSend.append('date', dateTime.toISOString());
+        } else if (key === "time") {
+          // Keep time as separate field as well (for display)
+          formDataToSend.append('time', value);
+        } else if (key !== "posters") {
+          // Append all other fields except posters (handled separately)
+          formDataToSend.append(key, value);
+        }
+        else if (key === "deadline" && value) {
+          const deadlineISO = new Date(value).toISOString();
+          formDataToSend.append("deadline", deadlineISO);
+        }
+      });
+
+      // Append poster files - backend expects "posters" field name
+      formData.posters.forEach((file) => {
+        formDataToSend.append("posters", file);
+      });
+
+      // Get token from auth context
+      const token = user?.token;
+      
+      // Send to backend - using your event route
+      const res = await axios.post(
+        "http://localhost:5000/api/events",
+        formDataToSend,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      console.log("✅ Event created successfully:", res.data);
+      alert('Event created successfully!');
+      setLoading(false);
+      navigate("/club/events/manage");
     } catch (error) {
-      console.error('Error creating event:', error);
+      console.error("❌ Error creating event:", error);
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          'Failed to create event. Please try again.';
+      alert(errorMessage);
       setLoading(false);
     }
   };
@@ -290,7 +339,7 @@ const CreateEventPage = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Form Sheet ID</label>
+                  <label className="block text-sm font-medium text-gray-700">Google Sheet ID</label>
                   <input
                     type="text"
                     name="formSheetId"
@@ -300,6 +349,34 @@ const CreateEventPage = () => {
                     placeholder="Sheet ID for responses"
                   />
                 </div>
+
+                {/* Team Size */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Team Size</label>
+                  <input
+                    type="text"
+                    name="teamSize"
+                    value={formData.teamSize}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl 
+                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Ex: Solo, 2-4 Members, Max 3, etc"
+                  />
+                </div>
+
+                {/* Registration Deadline */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Registration Deadline</label>
+                  <input
+                    type="date"
+                    name="deadline"
+                    value={formData.deadline}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl 
+                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
               </div>
             </div>
 
@@ -332,12 +409,13 @@ const CreateEventPage = () => {
                   </label>
                 </div>
 
+
                 {formData.posters.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {formData.posters.map((poster, index) => (
                       <div key={index} className="relative group">
                         <img
-                          src={poster}
+                          src={poster instanceof File ? URL.createObjectURL(poster) : poster}
                           alt={`Poster ${index + 1}`}
                           className="w-full h-32 object-cover rounded-lg"
                         />

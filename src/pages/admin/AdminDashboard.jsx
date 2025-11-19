@@ -13,6 +13,7 @@ import {
   Mail,
   Calendar
 } from 'lucide-react';
+import AdminLayout from '../../components/admin/AdminLayout';
 
 const AdminDashboard = () => {
   const { user } = useAuth();
@@ -21,9 +22,14 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Mock data - replace with actual API calls
   const [clubs, setClubs] = useState([]);
   const [students, setStudents] = useState([]);
+  const [stats, setStats] = useState({
+    totalClubs: 0,
+    totalStudents: 0,
+    activeStudents: 0,
+    blockedStudents: 0
+  });
 
   useEffect(() => {
     loadData();
@@ -32,79 +38,78 @@ const AdminDashboard = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Simulate API calls
-      setTimeout(() => {
-        setClubs([
-          {
-            _id: '1',
-            name: 'Tech Club',
-            description: 'Technology and innovation club',
-            logoUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=100',
-            owner: { name: 'John Doe', email: 'john@college.edu' },
-            createdAt: new Date('2024-01-15'),
-            contactInfo: [
-              { name: 'Faculty Advisor', role: 'advisor', email: 'advisor@college.edu' }
-            ]
-          },
-          {
-            _id: '2',
-            name: 'Arts Society',
-            description: 'Creative arts and performance',
-            logoUrl: 'https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=100',
-            owner: { name: 'Jane Smith', email: 'jane@college.edu' },
-            createdAt: new Date('2024-01-20'),
-            contactInfo: []
-          }
-        ]);
+      // Load stats
+      const statsResponse = await fetch('/api/admin/stats', {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+      const statsData = await statsResponse.json();
+      setStats(statsData);
 
-        setStudents([
-          {
-            _id: '1',
-            name: 'Alice Johnson',
-            email: 'alice@student.college.edu',
-            department: 'Computer Science',
-            year: '3rd Year',
-            clubRef: { name: 'Tech Club' },
-            isActive: true,
-            createdAt: new Date('2024-01-10')
-          },
-          {
-            _id: '2',
-            name: 'Bob Wilson',
-            email: 'bob@student.college.edu',
-            department: 'Electrical Engineering',
-            year: '2nd Year',
-            clubRef: { name: 'Tech Club' },
-            isActive: true,
-            createdAt: new Date('2024-01-12')
-          },
-          {
-            _id: '3',
-            name: 'Charlie Brown',
-            email: 'charlie@student.college.edu',
-            department: 'Fine Arts',
-            year: '4th Year',
-            clubRef: { name: 'Arts Society' },
-            isActive: false,
-            createdAt: new Date('2024-01-08')
-          }
-        ]);
-        setLoading(false);
-      }, 1000);
+      // Load clubs and students
+      await loadClubs();
+      await loadStudents();
+      
+      setLoading(false);
     } catch (error) {
       console.error('Error loading data:', error);
       setLoading(false);
     }
   };
 
+  const loadClubs = async () => {
+    try {
+      const response = await fetch('/api/admin/clubs', {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+      const data = await response.json();
+      setClubs(data.clubs);
+    } catch (error) {
+      console.error('Error loading clubs:', error);
+    }
+  };
+
+  const loadStudents = async () => {
+    try {
+      const response = await fetch('/api/admin/students', {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+      const data = await response.json();
+      setStudents(data.students);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
+  };
+
   const toggleStudentAccess = async (studentId) => {
     try {
-      // Simulate API call
-      setStudents(students.map(student => 
-        student._id === studentId 
-          ? { ...student, isActive: !student.isActive }
-          : student
-      ));
+      const response = await fetch(`/api/admin/students/${studentId}/access`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+
+      if (response.ok) {
+        // Reload students to get updated data
+        await loadStudents();
+        // Reload stats to update counts
+        const statsResponse = await fetch('/api/admin/stats', {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        });
+        const statsData = await statsResponse.json();
+        setStats(statsData);
+      } else {
+        console.error('Error updating student access');
+      }
     } catch (error) {
       console.error('Error updating student access:', error);
     }
@@ -120,13 +125,6 @@ const AdminDashboard = () => {
     student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     student.department.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const stats = {
-    totalClubs: clubs.length,
-    totalStudents: students.length,
-    activeStudents: students.filter(s => s.isActive).length,
-    blockedStudents: students.filter(s => !s.isActive).length
-  };
 
   if (loading) {
     return (

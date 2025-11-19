@@ -55,51 +55,52 @@ function SignupPage() {
     }));
   };
 
+ 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
+  e.preventDefault();
+  
+  if (formData.password !== formData.confirmPassword) {
+    setError('Passwords do not match');
+    return;
+  }
+
+  if (!formData.department) {
+    setError('Please select your department');
+    return;
+  }
+
+  if (!formData.year) {
+    setError('Please select your year');
+    return;
+  }
+
+  setLoading(true);
+  setError('');
+
+  try {
+    const result = await signup({
+      name: formData.name,
+      email: formData.email,
+      password: formData.password,
+      department: formData.department,
+      year: formData.year
+      // clubRef is automatically handled by backend for student signup
+    });
+
+    if (result.success) {
+      setTransitionStage('exit');
+      setTimeout(() => {
+        navigate('/student/dashboard');
+      }, 300);
+    } else {
+      setError(result.error || 'Registration failed. Please try again.');
     }
-
-    if (!formData.department) {
-      setError('Please select your department');
-      return;
-    }
-
-    if (!formData.year) {
-      setError('Please select your year');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const result = await signup({
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        department: formData.department,
-        year: formData.year,
-        role: 'student' // Default role for student signup
-      });
-
-      if (result.success) {
-        setTransitionStage('exit');
-        setTimeout(() => {
-          navigate('/student/dashboard');
-        }, 300);
-      } else {
-        setError(result.error || 'Registration failed. Please try again.');
-      }
-    } catch (err) {
-      setError(err.message || 'Registration failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (err) {
+    setError(err.message || 'Registration failed. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-4 transition-all duration-300 ${transitionStage === 'enter' ? 'opacity-0' : transitionStage === 'exit' ? 'opacity-0 scale-95' : 'opacity-100'}`}>
