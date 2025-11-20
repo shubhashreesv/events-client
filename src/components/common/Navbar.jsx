@@ -66,7 +66,7 @@ const Navbar = ({
               className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
               onClick={() =>
                 isAuthenticated && user?.role === 'student'
-                  ? navigate('/student-dashboard')
+                  ? navigate('/student/dashboard')
                   : isAuthenticated && user?.role === 'club'
                   ? navigate('/dashboard/club')
                   : isAuthenticated
@@ -190,7 +190,7 @@ const Navbar = ({
                   onClick={() => 
                     isAuthenticated && user?.role === 'club'
                       ? navigate('/club/details') // Navigate to club details page
-                      : navigate('/student-dashboard')
+                      : navigate('/student/dashboard')
                   }
                 >
                   <User className="w-5 h-5 text-gray-600" />

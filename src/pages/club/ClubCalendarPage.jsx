@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -10,7 +10,6 @@ import {
   Users,
   Clock,
   Plus,
-  Filter,
   Eye,
   Edit,
   ExternalLink,
@@ -22,111 +21,86 @@ import { eventAPI } from "../../services/eventService";
 const ClubCalendarPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // State hooks
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [view, setView] = useState('month');
   const [eventTypeFilter, setEventTypeFilter] = useState('all');
   const [dateRange, setDateRange] = useState({ start: null, end: null });
 
-  // Fetch data using hooks
+  // Data hooks
   const { club, loading: clubLoading, error: clubError } = useMyClub();
-  const { events, loading: eventsLoading, error: eventsError, refetch: refetchEvents } = useClubEvents(
-    club?._id,
-    { 
-      eventType: eventTypeFilter !== 'all' ? eventTypeFilter : '',
-      sortBy: 'date',
-      sortOrder: 'asc'
-    }
-  );
-  const { events: upcomingEvents, loading: upcomingLoading } = useUpcomingEvents(5);
+  const clubEventParams = useMemo(() => ({
+    eventType: eventTypeFilter !== 'all' ? eventTypeFilter : '',
+    sortBy: 'date',
+    sortOrder: 'asc'
+  }), [eventTypeFilter]);
 
-  // Calculate date range for the current view
-  useEffect(() => {
-    if (view === 'month') {
-      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      setDateRange({ start, end });
-    } else {
-      // Week view - get start of week (Sunday)
-      const start = new Date(currentDate);
-      start.setDate(currentDate.getDate() - currentDate.getDay());
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      setDateRange({ start, end });
-    }
-  }, [currentDate, view]);
+  const { events, loading: eventsLoading, error: eventsError, refetch: refetchEvents } = useClubEvents(club?._id, clubEventParams);
+  const { events: upcomingEvents } = useUpcomingEvents(5);
 
-  // Filter events based on current view and filters
-  const filteredEvents = events.filter(event => {
-    const eventDate = new Date(event.date);
-    
-    // Filter by event type
-    if (eventTypeFilter !== 'all' && event.eventType !== eventTypeFilter) {
-      return false;
-    }
+  // Computed values
+  const filteredEvents = useMemo(() => {
+    return (events || []).filter(event => {
+      const eventDate = new Date(event.date);
+      if (eventTypeFilter !== 'all' && event.eventType !== eventTypeFilter) return false;
+      if (dateRange.start && dateRange.end) {
+        return eventDate >= dateRange.start && eventDate <= dateRange.end;
+      }
+      return true;
+    });
+  }, [events, eventTypeFilter, dateRange]);
 
-    // Filter by date range for current view
-    if (dateRange.start && dateRange.end) {
-      return eventDate >= dateRange.start && eventDate <= dateRange.end;
-    }
+  const displayUpcomingEvents = useMemo(() => {
+    if ((upcomingEvents || []).length > 0) return upcomingEvents;
+    return (events || []).filter(e => new Date(e.date) >= new Date())
+                          .sort((a,b) => new Date(a.date) - new Date(b.date))
+                          .slice(0,5);
+  }, [upcomingEvents, events]);
 
-    return true;
-  });
-
-  const navigateDate = (direction) => {
-    const newDate = new Date(currentDate);
-    if (view === 'month') {
-      newDate.setMonth(newDate.getMonth() + direction);
-    } else {
-      newDate.setDate(newDate.getDate() + (direction * 7));
-    }
-    setCurrentDate(newDate);
-  };
+  // Calendar helpers
+  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDay = firstDay.getDay();
-
     const days = [];
-    
-    // Previous month days
+
+    // Add previous month's days
     const prevMonthLastDay = new Date(year, month, 0).getDate();
-    for (let i = startingDay - 1; i >= 0; i--) {
-      days.push({
-        date: new Date(year, month - 1, prevMonthLastDay - i),
-        isCurrentMonth: false,
-        isToday: false
-      });
+    const firstDayOfWeek = firstDay.getDay();
+    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+      const day = new Date(year, month - 1, prevMonthLastDay - i);
+      days.push({ date: day, isCurrentMonth: false });
     }
 
-    // Current month days
-    const today = new Date();
+    // Add current month's days
+    const daysInMonth = lastDay.getDate();
     for (let i = 1; i <= daysInMonth; i++) {
-      const dayDate = new Date(year, month, i);
-      days.push({
-        date: dayDate,
+      const day = new Date(year, month, i);
+      days.push({ 
+        date: day, 
         isCurrentMonth: true,
-        isToday: dayDate.toDateString() === today.toDateString()
+        isToday: day.toDateString() === new Date().toDateString()
       });
     }
 
-    // Next month days
+    // Add next month's days
     const totalCells = 42; // 6 weeks
     const nextMonthDays = totalCells - days.length;
     for (let i = 1; i <= nextMonthDays; i++) {
-      days.push({
-        date: new Date(year, month + 1, i),
-        isCurrentMonth: false,
-        isToday: false
-      });
+      const day = new Date(year, month + 1, i);
+      days.push({ date: day, isCurrentMonth: false });
     }
 
     return days;
   };
+
+  const days = useMemo(() => getDaysInMonth(currentDate), [currentDate]);
 
   const getEventsForDate = (date) => {
     return filteredEvents.filter(event => {
@@ -153,20 +127,13 @@ const ClubCalendarPage = () => {
     }
   };
 
-  const handleEventClick = async (eventId) => {
-    try {
-      // Increment views when event is clicked
-      await eventAPI.incrementEventViews(eventId);
-      navigate(`/club/events/${eventId}`);
-    } catch (error) {
-      console.error('Failed to increment views:', error);
-      navigate(`/club/events/${eventId}`);
+  // Event handlers
+  const navigateDate = (direction) => {
+    if (view === 'month') {
+      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + direction, 1));
+    } else {
+      setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() + (direction * 7))));
     }
-  };
-
-  const handleEditEvent = (eventId, e) => {
-    e.stopPropagation();
-    navigate(`/club/edit-event/${eventId}`);
   };
 
   const handleRefresh = () => {
@@ -174,74 +141,65 @@ const ClubCalendarPage = () => {
   };
 
   const handleCreateEvent = () => {
-    if (!club) {
-      alert('You need to create a club first before creating events');
-      return;
-    }
     navigate('/club/create-event');
   };
 
-  // Loading and error states
-  if (clubLoading || eventsLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading calendar...</p>
-        </div>
+  const handleEventClick = (eventId) => {
+    navigate(`/club/events/${eventId}`);
+  };
+
+  const handleEditEvent = (eventId, e) => {
+    e.stopPropagation();
+    navigate(`/club/events/edit/${eventId}`);
+  };
+
+  // Effects
+  useEffect(() => {
+    if (view === 'month') {
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      setDateRange({ start, end });
+    } else {
+      const start = new Date(currentDate);
+      start.setDate(currentDate.getDate() - currentDate.getDay());
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      setDateRange({ start, end });
+    }
+  }, [currentDate, view]);
+
+  // Loading and Error Components
+  const LoadingComponent = () => (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading calendar...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (clubError) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            <p>{clubError}</p>
-          </div>
-          <button
-            onClick={() => navigate('/club/create-club')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold"
-          >
-            Create Your Club
-          </button>
-        </div>
+  const ErrorComponent = ({ message }) => (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-red-600 text-xl mb-4">Error loading calendar</div>
+        <p className="text-gray-600">{message}</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Retry
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (eventsError) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            <p>Error loading events: {eventsError}</p>
-          </div>
-          <button
-            onClick={handleRefresh}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center mx-auto"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const days = getDaysInMonth(currentDate);
-  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  const displayUpcomingEvents = upcomingEvents.length > 0 ? upcomingEvents : events
-    .filter(event => new Date(event.date) >= new Date())
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, 5);
+  // Now JSX can be conditional safely
+  if (clubLoading || eventsLoading) return <LoadingComponent />;
+  if (clubError) return <ErrorComponent message={clubError} />;
+  if (eventsError) return <ErrorComponent message={eventsError} />;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Back Button */}
       <button
         onClick={() => navigate('/club/dashboard')}
         className="fixed top-6 left-6 z-50 p-3 bg-white/90 hover:bg-white text-gray-700 hover:text-blue-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 backdrop-blur-sm"
@@ -255,165 +213,69 @@ const ClubCalendarPage = () => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-4xl font-bold text-gray-900">Event Calendar</h1>
-            <p className="text-xl text-gray-600 mt-2">
-              {club ? `${club.name} - Track your event timeline and schedule` : 'Loading...'}
-            </p>
+            <p className="text-xl text-gray-600 mt-2">{club ? `${club.name} - Track your event timeline and schedule` : 'Loading...'}</p>
           </div>
           <div className="flex items-center space-x-4">
-            <button
-              onClick={handleRefresh}
-              className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg"
-            >
-              <RefreshCw className="w-5 h-5" />
-              <span>Refresh</span>
+            <button onClick={handleRefresh} className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg">
+              <RefreshCw className="w-5 h-5" /> <span>Refresh</span>
             </button>
-            <button
-              onClick={handleCreateEvent}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg"
-            >
-              <Plus className="w-5 h-5" />
-              <span>New Event</span>
+            <button onClick={handleCreateEvent} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg">
+              <Plus className="w-5 h-5" /> <span>New Event</span>
             </button>
           </div>
         </div>
 
         {/* Calendar Controls */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-2xl font-bold text-gray-900">{monthName}</h2>
-              <div className="flex space-x-1">
-                <button
-                  onClick={() => navigateDate(-1)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setCurrentDate(new Date())}
-                  className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => navigateDate(1)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border border-gray-200 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-2xl font-bold text-gray-900">{monthName}</h2>
+            <div className="flex space-x-1">
+              <button onClick={() => navigateDate(-1)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="w-5 h-5" /></button>
+              <button onClick={() => setCurrentDate(new Date())} className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Today</button>
+              <button onClick={() => navigateDate(1)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight className="w-5 h-5" /></button>
             </div>
-
-            <div className="flex items-center space-x-4">
-              <select
-                value={eventTypeFilter}
-                onChange={(e) => setEventTypeFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">All Event Types</option>
-                <option value="single">Single Events</option>
-                <option value="super">Main Events</option>
-                <option value="sub">Sub Events</option>
-              </select>
-
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setView('month')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    view === 'month' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Month
+          </div>
+          <div className="flex items-center space-x-4">
+            <select value={eventTypeFilter} onChange={e => setEventTypeFilter(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="all">All Event Types</option>
+              <option value="single">Single Events</option>
+              <option value="super">Main Events</option>
+              <option value="sub">Sub Events</option>
+            </select>
+            <div className="flex space-x-2">
+              {['month', 'week'].map(v => (
+                <button key={v} onClick={() => setView(v)} className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                  {v.charAt(0).toUpperCase() + v.slice(1)}
                 </button>
-                <button
-                  onClick={() => setView('week')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    view === 'week' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Week
-                </button>
-              </div>
+              ))}
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Calendar */}
+          {/* Calendar Grid */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-              {/* Weekday Headers */}
-              <div className="grid grid-cols-7 gap-1 mb-4">
-                {weekdays.map(day => (
-                  <div key={day} className="text-center text-sm font-semibold text-gray-500 py-2">
-                    {day}
-                  </div>
-                ))}
-              </div>
-
-              {/* Calendar Grid */}
+              <div className="grid grid-cols-7 gap-1 mb-4">{weekdays.map(day => <div key={day} className="text-center text-sm font-semibold text-gray-500 py-2">{day}</div>)}</div>
               <div className="grid grid-cols-7 gap-1">
-                {days.map((day, index) => {
+                {days.map((day, idx) => {
                   const dayEvents = getEventsForDate(day.date);
                   return (
-                    <div
-                      key={index}
-                      onClick={() => setSelectedDate(day.date)}
-                      className={`
-                        min-h-32 p-2 border rounded-lg cursor-pointer transition-all duration-200
-                        ${day.isCurrentMonth 
-                          ? 'bg-white hover:bg-gray-50 border-gray-200' 
-                          : 'bg-gray-50 text-gray-400 border-gray-100'
-                        }
-                        ${day.isToday ? 'border-blue-500 border-2' : ''}
-                        ${selectedDate?.toDateString() === day.date.toDateString() 
-                          ? 'ring-2 ring-blue-500 bg-blue-50' 
-                          : ''
-                        }
-                      `}
-                    >
+                    <div key={idx} onClick={() => setSelectedDate(day.date)} className={`min-h-32 p-2 border rounded-lg cursor-pointer transition-all duration-200
+                      ${day.isCurrentMonth ? 'bg-white hover:bg-gray-50 border-gray-200' : 'bg-gray-50 text-gray-400 border-gray-100'}
+                      ${day.isToday ? 'border-blue-500 border-2' : ''}
+                      ${selectedDate?.toDateString() === day.date.toDateString() ? 'ring-2 ring-blue-500 bg-blue-50' : ''}`}>
                       <div className="flex justify-between items-start mb-1">
-                        <span className={`
-                          text-sm font-medium
-                          ${day.isToday ? 'bg-blue-600 text-white px-2 py-1 rounded-full' : ''}
-                        `}>
-                          {day.date.getDate()}
-                        </span>
-                        {dayEvents.length > 0 && (
-                          <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full">
-                            {dayEvents.length}
-                          </span>
-                        )}
+                        <span className={`text-sm font-medium ${day.isToday ? 'bg-blue-600 text-white px-2 py-1 rounded-full' : ''}`}>{day.date.getDate()}</span>
+                        {dayEvents.length > 0 && <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full">{dayEvents.length}</span>}
                       </div>
-
-                      {/* Events for the day */}
                       <div className="space-y-1">
                         {dayEvents.slice(0, 3).map(event => (
-                          <div
-                            key={event._id}
-                            className={`
-                              text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 transition-opacity text-white
-                              ${getEventTypeColor(event.eventType)}
-                            `}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEventClick(event._id);
-                            }}
-                          >
-                            <div className="flex items-center">
-                              <span className="truncate">{event.title}</span>
-                            </div>
+                          <div key={event._id} className={`text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 transition-opacity text-white ${getEventTypeColor(event.eventType)}`} onClick={e => { e.stopPropagation(); handleEventClick(event._id); }}>
+                            <span className="truncate">{event.title}</span>
                           </div>
                         ))}
-                        {dayEvents.length > 3 && (
-                          <div className="text-xs text-gray-500 text-center">
-                            +{dayEvents.length - 3} more
-                          </div>
-                        )}
+                        {dayEvents.length > 3 && <div className="text-xs text-gray-500 text-center">+{dayEvents.length - 3} more</div>}
                       </div>
                     </div>
                   );
