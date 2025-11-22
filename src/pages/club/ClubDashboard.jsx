@@ -96,7 +96,7 @@ const ClubDashboard = () => {
       icon: MapPin,
       title: 'Venue Booking',
       description: 'Book venues for your events',
-      path: '/club/venue-booking',
+      path: '/venues',
       color: 'bg-purple-600 hover:bg-purple-700',
     },
     {
@@ -192,7 +192,7 @@ const ClubDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen w-full bg-gray-50 flex">
       <div className="flex-1 lg:ml-0">
         <Navbar
           showBackButton={false}

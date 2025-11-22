@@ -42,6 +42,8 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import DevModeIndicator from './components/common/DevModeIndicator';
 import ManageContacts from './pages/admin/ManageContacts';
 
+
+
 // Main App Routes Component
 function AppRoutes() {
   const { devMode } = useAuth();
@@ -197,6 +199,8 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+
+        
 
         {/* Fallback Route */}
         <Route path="*" element={<NotFoundPage />} />

@@ -1,9 +1,10 @@
 // Navbar.jsx
 import React, { useState } from 'react';
 import { Search, Bell, Phone, Home, LogOut, Menu, User, ArrowLeft, MapPin, Plus, Edit } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import kecLogo from '../../assets/kec.jpg'; 
+import kecLogo from './kec.jpg';
+
 
 const Navbar = ({
   searchPlaceholder = 'Search Events...',
@@ -39,6 +40,7 @@ const Navbar = ({
     navigate(-1); // Go back to the previous page
   };
 
+  // Don't show back button on main dashboard pages, login, or signup
   const shouldShowBackButton = showBackButton && 
     location.pathname !== '/' && // Main student dashboard
     location.pathname !== '/login' &&
@@ -65,7 +67,7 @@ const Navbar = ({
               className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
               onClick={() =>
                 isAuthenticated && user?.role === 'student'
-                  ? navigate('/student/dashboard')
+                  ? navigate('/student-dashboard')
                   : isAuthenticated && user?.role === 'club'
                   ? navigate('/dashboard/club')
                   : isAuthenticated
@@ -189,7 +191,7 @@ const Navbar = ({
                   onClick={() => 
                     isAuthenticated && user?.role === 'club'
                       ? navigate('/club/details') // Navigate to club details page
-                      : navigate('/student/dashboard')
+                      : navigate('/student-dashboard')
                   }
                 >
                   <User className="w-5 h-5 text-gray-600" />
